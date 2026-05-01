@@ -1,108 +1,27 @@
-// ========== IndexedDB Wrapper ==========
-const DB = {
-  _db: null,
-
+import { CONFIG } from './config.js';
+let _db = null;
+export const DB = {
   async open() {
-    if (this._db) return this._db;
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(CONFIG.DB_NAME, CONFIG.DB_VERSION);
-      req.onupgradeneeded = (e) => {
+    if (_db) return _db;
+    return new Promise((res, rej) => {
+      const r = indexedDB.open(CONFIG.DB_NAME, CONFIG.DB_VERSION);
+      r.onupgradeneeded = e => {
         const db = e.target.result;
-        CONFIG.TABLES.forEach(t => {
-          if (!db.objectStoreNames.contains(t)) {
-            db.createObjectStore(t, { keyPath: 'id' });
-          }
-        });
-        if (!db.objectStoreNames.contains('sync_queue')) {
-          db.createObjectStore('sync_queue', { keyPath: 'id', autoIncrement: true });
-        }
+        CONFIG.TABLES.forEach(t => { if (!db.objectStoreNames.contains(t)) db.createObjectStore(t, { keyPath: 'id' }); });
+        if (!db.objectStoreNames.contains('sync_queue')) db.createObjectStore('sync_queue', { keyPath: 'id', autoIncrement: true });
       };
-      req.onsuccess = (e) => { this._db = e.target.result; resolve(this._db); };
-      req.onerror = (e) => reject(e.target.error);
+      r.onsuccess = e => { _db = e.target.result; res(_db); };
+      r.onerror = e => rej(e.target.error);
     });
   },
-
-  async getAll(table) {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(table, 'readonly');
-      const store = tx.objectStore(table);
-      const req = store.getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
-  },
-
-  async get(table, id) {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(table, 'readonly');
-      const req = tx.objectStore(table).get(id);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
-  },
-
-  async put(table, data) {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(table, 'readwrite');
-      tx.objectStore(table).put(data);
-      tx.oncomplete = () => resolve(data);
-      tx.onerror = () => reject(tx.error);
-    });
-  },
-
-  async putAll(table, items) {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(table, 'readwrite');
-      const store = tx.objectStore(table);
-      items.forEach(item => store.put(item));
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  },
-
-  async delete(table, id) {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(table, 'readwrite');
-      tx.objectStore(table).delete(id);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  },
-
-  async clear(table) {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(table, 'readwrite');
-      tx.objectStore(table).clear();
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  },
-
-  async addToQueue(operation) {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('sync_queue', 'readwrite');
-      tx.objectStore('sync_queue').add({ ...operation, timestamp: Date.now() });
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  },
-
-  async getQueue() {
-    return this.getAll('sync_queue');
-  },
-
-  async clearQueue() {
-    return this.clear('sync_queue');
-  },
-
-  async removeFromQueue(id) {
-    return this.delete('sync_queue', id);
-  }
+  async getAll(t) { const db = await this.open(); return new Promise((res, rej) => { const r = db.transaction(t, 'readonly').objectStore(t).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); }); },
+  async get(t, id) { const db = await this.open(); return new Promise((res, rej) => { const r = db.transaction(t, 'readonly').objectStore(t).get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); }); },
+  async put(t, d) { const db = await this.open(); return new Promise((res, rej) => { const tx = db.transaction(t, 'readwrite'); tx.objectStore(t).put(d); tx.oncomplete = () => res(d); tx.onerror = () => rej(tx.error); }); },
+  async putAll(t, items) { const db = await this.open(); return new Promise((res, rej) => { const tx = db.transaction(t, 'readwrite'); const s = tx.objectStore(t); items.forEach(i => s.put(i)); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); },
+  async delete(t, id) { const db = await this.open(); return new Promise((res, rej) => { const tx = db.transaction(t, 'readwrite'); tx.objectStore(t).delete(id); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); },
+  async clear(t) { const db = await this.open(); return new Promise((res, rej) => { const tx = db.transaction(t, 'readwrite'); tx.objectStore(t).clear(); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); },
+  async addToQueue(op) { const db = await this.open(); return new Promise((res, rej) => { const tx = db.transaction('sync_queue', 'readwrite'); tx.objectStore('sync_queue').add({ ...op, timestamp: Date.now() }); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); },
+  async getQueue() { return this.getAll('sync_queue'); },
+  async clearQueue() { return this.clear('sync_queue'); },
+  async removeFromQueue(id) { return this.delete('sync_queue', id); }
 };
