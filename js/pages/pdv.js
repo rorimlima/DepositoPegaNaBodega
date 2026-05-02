@@ -1,14 +1,14 @@
 import { DB } from '../db.js';
+import { SyncEngine } from '../syncEngine.js';
 import { Store } from '../store.js';
 import { Router } from '../router.js';
-import { SyncEngine } from '../syncEngine.js';
 import { Toast } from '../toast.js';
 import { Modal } from '../modal.js';
 import { CONFIG } from '../config.js';
 
 Router.register('pdv', async (container) => {
-  const produtos = (await DB.getAll('produtos')).filter(p => p.ativo !== false);
-  const clientes = await DB.getAll('clientes');
+  let produtos = (await SyncEngine.getAll('produtos')).filter(p => p.ativo !== false);
+  const clientes = await SyncEngine.getAll('clientes');
   container.innerHTML = `<div class="page"><div class="pdv-layout">
     <div class="pdv-products">
       <div class="search-bar" style="margin-bottom:8px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" id="pdv-s" placeholder="Buscar produto..."></div>
@@ -25,6 +25,7 @@ Router.register('pdv', async (container) => {
   let curCat = 'all';
   function renderProds(s='') {
     const g = document.getElementById('pdv-grid');
+    if (!g) return;
     const f = produtos.filter(p => (curCat==='all'||p.categoria===curCat) && (!s||p.nome.toLowerCase().includes(s.toLowerCase())));
     if(!f.length){g.innerHTML='<div class="empty-state"><p>Nenhum produto</p></div>';return;}
     g.innerHTML = f.map(p=>`<div class="product-card ${p.estoque_atual<=0?'no-stock':p.estoque_atual<=5?'low-stock':''}" data-id="${p.id}"><div class="product-card-name">${p.nome}</div><div class="product-card-cat">${p.categoria||'-'}</div><div class="product-card-price">${Store.formatMoney(p.preco_venda)}</div><div class="product-card-stock">Est: ${p.estoque_atual}</div></div>`).join('');
@@ -36,6 +37,7 @@ Router.register('pdv', async (container) => {
 
   function renderCart() {
     const ci = document.getElementById('cart-items'), ct = document.getElementById('cart-total'), bf = document.getElementById('btn-fin');
+    if (!ci) return;
     const cart = Store.cart;
     if(!cart.length){ci.innerHTML='<div class="empty-state"><p>Carrinho vazio</p></div>';ct.textContent='R$ 0,00';bf.disabled=true;return;}
     ci.innerHTML = cart.map(i=>`<div class="cart-item"><div class="cart-item-info"><div class="cart-item-name">${i.produto_nome}</div><div class="cart-item-price">${Store.formatMoney(i.preco_unitario)} un.</div></div><div class="cart-item-qty"><button class="cq-minus" data-id="${i.produto_id}">−</button><span>${i.quantidade}</span><button class="cq-plus" data-id="${i.produto_id}">+</button></div><div class="cart-item-subtotal">${Store.formatMoney(i.subtotal)}</div><button class="cart-item-remove cr-btn" data-id="${i.produto_id}">✕</button></div>`).join('');
@@ -78,28 +80,37 @@ Router.register('pdv', async (container) => {
       const paid = Array.from(rows).reduce((s,r)=>s+(parseFloat(r.querySelector('.pv').value)||0),0);
       if(Math.abs(total-paid)>0.01){Toast.warning('Valor não confere!');return;}
       const vid = Store.generateId();
-      const venda = {id:vid,cliente_id:cliId,total,status:'finalizada',created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+      const codigoVenda = String(Date.now()).slice(-8);
+      const venda = {id:vid,cliente_id:cliId,total,status:'finalizada',codigo_venda:codigoVenda,is_deleted:false,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
       await SyncEngine.insert('vendas',venda);
       for(const it of Store.cart){
-        await SyncEngine.insert('itens_venda',{id:Store.generateId(),venda_id:vid,produto_id:it.produto_id,produto_nome:it.produto_nome,quantidade:it.quantidade,preco_unitario:it.preco_unitario,subtotal:it.subtotal,created_at:new Date().toISOString()});
-        const pr = await DB.get('produtos',it.produto_id);
+        await SyncEngine.insert('itens_venda',{id:Store.generateId(),venda_id:vid,produto_id:it.produto_id,produto_nome:it.produto_nome,quantidade:it.quantidade,preco_unitario:it.preco_unitario,subtotal:it.subtotal,is_deleted:false,created_at:new Date().toISOString(),updated_at:new Date().toISOString()});
+        const pr = await SyncEngine.get('produtos',it.produto_id);
         if(pr){pr.estoque_atual=Math.max(0,pr.estoque_atual-it.quantidade);pr.updated_at=new Date().toISOString();await SyncEngine.update('produtos',pr);}
       }
       for(const r of rows){
-        await SyncEngine.insert('pagamentos_venda',{id:Store.generateId(),venda_id:vid,valor:parseFloat(r.querySelector('.pv').value)||0,forma_pagamento:r.querySelector('.pf').value,data_pagamento:r.querySelector('.pd').value,created_at:new Date().toISOString()});
+        await SyncEngine.insert('pagamentos_venda',{id:Store.generateId(),venda_id:vid,valor:parseFloat(r.querySelector('.pv').value)||0,forma_pagamento:r.querySelector('.pf').value,data_pagamento:r.querySelector('.pd').value,is_deleted:false,created_at:new Date().toISOString(),updated_at:new Date().toISOString()});
       }
       Modal.close(); Store.clearCart(); Toast.success('Venda finalizada!');
       genPDF(venda,cliNome);
       Router.navigate('pdv');
     };
   };
+
+  // Reactive: refresh product list if sync brings in new data
+  SyncEngine.subscribe(['produtos'], async () => {
+    if (Router.current === 'pdv') {
+      produtos = (await SyncEngine.getAll('produtos')).filter(p => p.ativo !== false);
+      renderProds(document.getElementById('pdv-s')?.value || '');
+    }
+  });
 });
 
 async function genPDF(venda, cliNome) {
   try {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({unit:'mm',format:[80,200]});
-    const emp = (await DB.getAll('empresa'))[0]||{};
+    const emp = (await SyncEngine.getAll('empresa'))[0]||{};
     let y=10;
     doc.setFontSize(12); doc.setFont(undefined,'bold'); doc.text(emp.nome||'PegaNaBodega',40,y,{align:'center'}); y+=5;
     doc.setFontSize(7); doc.setFont(undefined,'normal');
@@ -108,17 +119,19 @@ async function genPDF(venda, cliNome) {
     y+=2; doc.line(5,y,75,y); y+=4;
     doc.setFontSize(8); doc.text(`Cliente: ${cliNome}`,5,y); y+=4;
     doc.text(`Data: ${new Date(venda.created_at).toLocaleString('pt-BR')}`,5,y); y+=4;
+    if(venda.codigo_venda){doc.text(`Código: #${venda.codigo_venda}`,5,y); y+=4;}
     doc.line(5,y,75,y); y+=4;
-    const itens = (await DB.getAll('itens_venda')).filter(i=>i.venda_id===venda.id);
+    const itens = (await SyncEngine.getAll('itens_venda')).filter(i=>i.venda_id===venda.id);
     doc.setFontSize(7);
     for(const it of itens){const n=it.produto_nome.length>18?it.produto_nome.substring(0,18)+'...':it.produto_nome;doc.text(n,5,y);doc.text(`${it.quantidade}x`,42,y);doc.text(Store.formatMoney(it.subtotal),73,y,{align:'right'});y+=3.5;}
     y+=2; doc.line(5,y,75,y); y+=4;
     doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.text(`TOTAL: ${Store.formatMoney(venda.total)}`,73,y,{align:'right'}); y+=5;
-    const pags = (await DB.getAll('pagamentos_venda')).filter(p=>p.venda_id===venda.id);
+    const pags = (await SyncEngine.getAll('pagamentos_venda')).filter(p=>p.venda_id===venda.id);
     doc.setFontSize(7); doc.setFont(undefined,'normal');
     for(const p of pags){doc.text(`${p.forma_pagamento}: ${Store.formatMoney(p.valor)}`,5,y);y+=3.5;}
     y+=4; doc.text('Obrigado pela preferência!',40,y,{align:'center'});
-    doc.save(`recibo_${venda.id.substring(0,8)}.pdf`);
+    doc.save(`recibo_${venda.codigo_venda||venda.id.substring(0,8)}.pdf`);
     Toast.success('PDF gerado!');
   } catch(e) { console.error(e); Toast.error('Erro ao gerar PDF'); }
 }
+

@@ -1,12 +1,10 @@
-import { DB } from '../db.js';
+import { SyncEngine } from '../syncEngine.js';
 import { Store } from '../store.js';
 import { Router } from '../router.js';
-import { SyncEngine } from '../syncEngine.js';
 import { Toast } from '../toast.js';
-import { supabase } from '../supabaseClient.js';
 
 Router.register('empresa', async (container) => {
-  const empresas = await DB.getAll('empresa');
+  const empresas = await SyncEngine.getAll('empresa');
   const e = empresas[0] || {};
   container.innerHTML = `<div class="page"><div class="card" style="max-width:600px">
     <div class="card-header"><h3 class="card-title">Dados da Empresa</h3></div>
@@ -23,12 +21,28 @@ Router.register('empresa', async (container) => {
   document.getElementById('logo-up').onchange = async (ev) => {
     const file = ev.target.files[0]; if(!file) return;
     const reader = new FileReader();
-    reader.onload = async (r) => { e.logo_url = r.target.result; await SyncEngine.update('empresa', {...e, logo_url:e.logo_url}); Toast.success('Logo salva!'); Router.navigate('empresa'); };
+    reader.onload = async (r) => {
+      e.logo_url = r.target.result;
+      await SyncEngine.update('empresa', {...e, logo_url:e.logo_url, is_deleted:false, updated_at:new Date().toISOString()});
+      Toast.success('Logo salva!');
+      Router.navigate('empresa');
+    };
     reader.readAsDataURL(file);
   };
 
   document.getElementById('btn-save-emp').onclick = async () => {
-    const d = { id:e.id||Store.generateId(), nome:document.getElementById('fe-n').value.trim()||'DepostitoPegaNaBodega', cnpj_cpf:document.getElementById('fe-c').value.trim(), telefone:document.getElementById('fe-t').value.trim(), endereco:document.getElementById('fe-e').value.trim(), logo_url:e.logo_url||null, created_at:e.created_at||new Date().toISOString(), updated_at:new Date().toISOString() };
-    await SyncEngine.update('empresa',d); Toast.success('Dados salvos!');
+    const d = {
+      id: e.id || Store.generateId(),
+      nome: document.getElementById('fe-n').value.trim() || 'DepostitoPegaNaBodega',
+      cnpj_cpf: document.getElementById('fe-c').value.trim(),
+      telefone: document.getElementById('fe-t').value.trim(),
+      endereco: document.getElementById('fe-e').value.trim(),
+      logo_url: e.logo_url || null,
+      is_deleted: false,
+      created_at: e.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    await SyncEngine.update('empresa', d);
+    Toast.success('Dados salvos!');
   };
 });
