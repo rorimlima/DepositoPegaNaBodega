@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db, syncData } from '@/lib/syncEngine';
+import { syncData } from '@/lib/syncEngine';
+import { db } from '@/lib/db';
 import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 

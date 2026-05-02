@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
-import { Trash2, Plus, Minus, Receipt, CreditCard } from 'lucide-react';
+import { Trash2, Plus, Minus, Receipt, CreditCard, ShoppingCart, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
