@@ -1,4 +1,4 @@
-const CACHE_NAME = 'peganabodega-pwa-v1';
+const CACHE_NAME = 'sdo-pwa-v1';
 const urlsToCache = [
   '/',
   '/manifest.json',

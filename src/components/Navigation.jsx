@@ -19,7 +19,7 @@ export function Sidebar() {
   return (
     <aside className="hidden md:flex flex-col w-64 bg-zinc-950 border-r border-zinc-800 text-zinc-400 h-full">
       <div className="p-6">
-        <h2 className="text-2xl font-black text-amber-500 tracking-tighter">PegaNaBodega</h2>
+        <h2 className="text-2xl font-black text-amber-500 tracking-tighter">SDO</h2>
       </div>
       <nav className="flex-1 px-4 space-y-2">
         {navItems.map((item) => {

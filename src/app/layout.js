@@ -7,7 +7,7 @@ import { ClientProviders } from "@/components/ClientProviders";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "PegaNaBodega PDV",
+  title: "SDO Seu Deposito Online",
   description: "ERP e PDV Offline-First para Depósito de Bebidas",
   manifest: "/manifest.json",
 };

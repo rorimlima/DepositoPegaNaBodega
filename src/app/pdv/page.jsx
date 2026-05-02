@@ -61,7 +61,7 @@ export default function PDVPage() {
 
   const generatePDF = (venda) => {
     const doc = new jsPDF('p', 'mm', [80, 297]); // Thermal 80mm
-    const myCompany = empresa.length > 0 ? empresa[0] : { nome: 'Depósito Pega Na Bodega', cnpj: '00.000.000/0000-00', telefone: '(00) 00000-0000' };
+    const myCompany = empresa.length > 0 ? empresa[0] : { nome: 'SDO Seu Deposito Online', cnpj: '00.000.000/0000-00', telefone: '(00) 00000-0000' };
 
     doc.setFontSize(14);
     doc.text(myCompany.nome, 40, 10, { align: 'center' });

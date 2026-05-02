@@ -1,6 +1,6 @@
 {
-  "name": "PegaNaBodega PDV",
-  "short_name": "PegaNaBodega",
+  "name": "SDO Seu Deposito Online",
+  "short_name": "SDO",
   "description": "ERP e PDV Offline-First para Depósito de Bebidas",
   "start_url": "/",
   "display": "standalone",

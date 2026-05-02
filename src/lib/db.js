@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 
-export const db = new Dexie('DepositoPegaNaBodegaDB');
+export const db = new Dexie('SDODatabase');
 
 db.version(1).stores({
   empresa: 'id', // only one record usually
