@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pegabodega-v3';
+const CACHE_NAME = 'pegabodega-v4';
 const ASSETS = [
   '/',
   '/index.html',
@@ -19,7 +19,10 @@ const ASSETS = [
   '/js/pages/produtos.js',
   '/js/pages/empresa.js',
   '/js/app.js',
-  '/assets/favicon.svg'
+  '/assets/favicon.svg',
+  '/manifest.json',
+  '/assets/icon-192.png',
+  '/assets/icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
