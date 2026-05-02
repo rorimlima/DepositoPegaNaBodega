@@ -5,7 +5,7 @@ export const Router = {
     if (!this._pages[page]) return;
     this._current = page;
     document.querySelectorAll('.nav-item,.bottom-nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
-    const titles = { dashboard:'Dashboard', pdv:'Ponto de Venda', clientes:'Clientes', produtos:'Produtos', empresa:'Minha Empresa' };
+    const titles = { dashboard:'Dashboard', pdv:'Ponto de Venda', vendas:'Vendas', clientes:'Clientes', produtos:'Produtos', empresa:'Minha Empresa' };
     document.getElementById('header-title').textContent = titles[page] || page;
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('sidebar-overlay').classList.remove('active');

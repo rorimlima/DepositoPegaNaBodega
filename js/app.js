@@ -5,6 +5,7 @@ import { Toast } from './toast.js';
 // Import pages to register routes
 import './pages/dashboard.js';
 import './pages/pdv.js';
+import './pages/vendas.js';
 import './pages/clientes.js';
 import './pages/produtos.js';
 import './pages/empresa.js';

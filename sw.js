@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pegabodega-v1';
+const CACHE_NAME = 'pegabodega-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -11,8 +11,10 @@ const ASSETS = [
   '/js/toast.js',
   '/js/modal.js',
   '/js/router.js',
+  '/js/receipt.js',
   '/js/pages/dashboard.js',
   '/js/pages/pdv.js',
+  '/js/pages/vendas.js',
   '/js/pages/clientes.js',
   '/js/pages/produtos.js',
   '/js/pages/empresa.js',
@@ -43,8 +45,14 @@ self.addEventListener('fetch', (e) => {
       fetch(e.request).catch(() => caches.match(e.request))
     );
   } else {
+    // Network-first strategy for app files to ensure updates propagate
     e.respondWith(
-      caches.match(e.request).then((r) => r || fetch(e.request))
+      fetch(e.request).then((response) => {
+        // Update cache with fresh response
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+        return response;
+      }).catch(() => caches.match(e.request))
     );
   }
 });
