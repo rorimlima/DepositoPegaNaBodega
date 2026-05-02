@@ -2,20 +2,28 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, ShoppingCart, Users, Package, Settings, UserCog } from 'lucide-react';
+import {
+  LayoutDashboard, ShoppingCart, Users, Package,
+  Settings, UserCog, Receipt, Landmark
+} from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import clsx from 'clsx';
 import { useEffect } from 'react';
 
 // Definição das rotas e quais roles podem acessar
 const allNavItems = [
-  { name: 'Dashboard', href: '/',         icon: LayoutDashboard, roles: ['admin'] },
-  { name: 'PDV',       href: '/pdv',      icon: ShoppingCart,    roles: ['admin', 'operador'] },
-  { name: 'Clientes',  href: '/clientes', icon: Users,           roles: ['admin'] },
-  { name: 'Produtos',  href: '/produtos', icon: Package,         roles: ['admin'] },
-  { name: 'Usuários',  href: '/usuarios', icon: UserCog,         roles: ['admin'] },
-  { name: 'Empresa',   href: '/empresa',  icon: Settings,        roles: ['admin'] },
+  { name: 'Dashboard',  href: '/',            icon: LayoutDashboard, roles: ['admin'] },
+  { name: 'PDV',        href: '/pdv',         icon: ShoppingCart,    roles: ['admin', 'operador'] },
+  { name: 'Vendas',     href: '/vendas',      icon: Receipt,         roles: ['admin'] },
+  { name: 'Clientes',   href: '/clientes',    icon: Users,           roles: ['admin'] },
+  { name: 'Produtos',   href: '/produtos',    icon: Package,         roles: ['admin'] },
+  { name: 'Financeiro', href: '/financeiro',  icon: Landmark,        roles: ['admin'] },
+  { name: 'Usuários',   href: '/usuarios',    icon: UserCog,         roles: ['admin'] },
+  { name: 'Empresa',    href: '/empresa',     icon: Settings,        roles: ['admin'] },
 ];
+
+// Itens para a bottom nav (mobile) — máximo 5 para caber
+const mobileNavPriority = ['/', '/pdv', '/vendas', '/financeiro', '/clientes'];
 
 function useNavItems() {
   const { usuario } = useAuth();
@@ -74,10 +82,13 @@ export function BottomNav() {
   const pathname = usePathname();
   const navItems = useNavItems();
 
+  // Filtrar para mostrar apenas os prioritários no mobile (max 5)
+  const mobileItems = navItems.filter(item => mobileNavPriority.includes(item.href));
+
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-md border-t border-slate-800">
       <div className="flex items-stretch justify-around" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-        {navItems.map(({ name, href, icon: Icon }) => {
+        {mobileItems.map(({ name, href, icon: Icon }) => {
           const active = pathname === href;
           return (
             <Link key={href} href={href}

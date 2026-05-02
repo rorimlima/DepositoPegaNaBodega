@@ -1,15 +1,19 @@
 'use client';
 
-import { useState, useCallback, memo } from 'react';
+import { useState, useCallback, useMemo, memo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, addToSyncQueue } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import { Input } from '@/components/ui/input';
-import { Trash2, Edit, Plus, User, MapPin, Phone, Save, X, Navigation, Search } from 'lucide-react';
+import {
+  Trash2, Edit, Plus, User, MapPin, Phone, Save, X,
+  Navigation, Search, Eye, ShoppingCart, DollarSign,
+  Package, TrendingUp, ArrowDownRight
+} from 'lucide-react';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Formulário FORA do pai — estado interno isolado
-// ─────────────────────────────────────────────────────────────────────────────
+const fmt = (c) => `R$ ${((c || 0) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+// ── Formulário isolado ──────────────────────────────────────────────────────
 const ClienteForm = memo(function ClienteForm({ initial, onSave, onCancel }) {
   const [nome,     setNome]     = useState(initial?.nome     ?? '');
   const [telefone, setTelefone] = useState(initial?.telefone ?? '');
@@ -56,8 +60,8 @@ const ClienteForm = memo(function ClienteForm({ initial, onSave, onCancel }) {
   );
 });
 
-/** Card de cliente */
-const ClienteCard = memo(function ClienteCard({ c, onEdit, onDelete }) {
+// ── Card de cliente ──────────────────────────────────────────────────────────
+const ClienteCard = memo(function ClienteCard({ c, onEdit, onDelete, onDetails }) {
   const openMaps = () => {
     if (c.endereco) window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.endereco)}`, '_blank');
   };
@@ -86,10 +90,13 @@ const ClienteCard = memo(function ClienteCard({ c, onEdit, onDelete }) {
           )}
         </div>
         <div className="flex gap-1.5 shrink-0 ml-1">
-          <button onClick={() => onEdit(c)} className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400 active:bg-slate-700">
+          <button onClick={() => onDetails(c)} title="Detalhes" className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center text-green-400 active:bg-green-500/20">
+            <Eye size={13} />
+          </button>
+          <button onClick={() => onEdit(c)} title="Editar" className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400 active:bg-slate-700">
             <Edit size={13} />
           </button>
-          <button onClick={() => onDelete(c.id)} className="w-9 h-9 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500 active:bg-red-500/20">
+          <button onClick={() => onDelete(c.id)} title="Excluir" className="w-9 h-9 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500 active:bg-red-500/20">
             <Trash2 size={13} />
           </button>
         </div>
@@ -98,15 +105,138 @@ const ClienteCard = memo(function ClienteCard({ c, onEdit, onDelete }) {
   );
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE PRINCIPAL
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Modal de Detalhes ────────────────────────────────────────────────────────
+const DetalhesModal = memo(function DetalhesModal({ cliente, vendas, onClose }) {
+  const stats = useMemo(() => {
+    const vendasCliente = vendas.filter(v => v.cliente_id === cliente.id);
+    const totalVendas = vendasCliente.length;
+    const totalFaturado = vendasCliente.reduce((a, v) => a + (v.total_centavos || 0), 0);
+
+    // Total pago vs fiado
+    let totalPago = 0, totalFiado = 0;
+    vendasCliente.forEach(v => {
+      (v.pagamentos || []).forEach(p => {
+        const val = Math.round(parseFloat(p.valor || 0) * 100);
+        if (p.metodo === 'Fiado') totalFiado += val;
+        else totalPago += val;
+      });
+    });
+
+    // Produto mais comprado
+    const prodMap = {};
+    vendasCliente.forEach(v => {
+      (v.itens || []).forEach(it => {
+        prodMap[it.nome] = (prodMap[it.nome] || 0) + (it.qtde || 1);
+      });
+    });
+    const entries = Object.entries(prodMap);
+    entries.sort((a, b) => b[1] - a[1]);
+    const topProduto = entries.length ? { nome: entries[0][0], qtde: entries[0][1] } : null;
+
+    return { totalVendas, totalFaturado, totalPago, totalFiado, topProduto, vendasCliente };
+  }, [vendas, cliente]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-slate-950 border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg shadow-2xl overflow-hidden max-h-[95dvh] flex flex-col">
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+          <div>
+            <h3 className="font-bold text-slate-100 flex items-center gap-2">
+              <User size={18} className="text-blue-500" /> {cliente.nome}
+            </h3>
+            {cliente.telefone && <p className="text-xs text-slate-500 mt-0.5">{cliente.telefone}</p>}
+          </div>
+          <button onClick={onClose} className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-4 space-y-4">
+          {/* KPIs do cliente */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-slate-900 rounded-xl p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <ShoppingCart size={12} className="text-blue-400" />
+                <span className="text-[10px] text-slate-500 uppercase">Vendas</span>
+              </div>
+              <p className="text-lg font-black text-blue-400">{stats.totalVendas}</p>
+            </div>
+            <div className="bg-slate-900 rounded-xl p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <DollarSign size={12} className="text-green-400" />
+                <span className="text-[10px] text-slate-500 uppercase">Faturado</span>
+              </div>
+              <p className="text-lg font-black text-green-400">{fmt(stats.totalFaturado)}</p>
+            </div>
+            <div className="bg-slate-900 rounded-xl p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <TrendingUp size={12} className="text-emerald-400" />
+                <span className="text-[10px] text-slate-500 uppercase">Pago</span>
+              </div>
+              <p className="text-lg font-black text-emerald-400">{fmt(stats.totalPago)}</p>
+            </div>
+            <div className="bg-slate-900 rounded-xl p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <ArrowDownRight size={12} className="text-red-400" />
+                <span className="text-[10px] text-slate-500 uppercase">Devedor</span>
+              </div>
+              <p className="text-lg font-black text-red-400">{fmt(stats.totalFiado)}</p>
+            </div>
+          </div>
+
+          {/* Produto mais comprado */}
+          {stats.topProduto && (
+            <div className="bg-slate-900 rounded-xl p-3 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                <Package size={18} className="text-purple-400" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase">Produto Favorito</p>
+                <p className="text-sm font-bold text-purple-400">{stats.topProduto.nome}</p>
+                <p className="text-[10px] text-slate-500">{stats.topProduto.qtde} unidades compradas</p>
+              </div>
+            </div>
+          )}
+
+          {/* Histórico de vendas */}
+          <div>
+            <h4 className="text-xs text-slate-500 uppercase font-semibold mb-2">Histórico de Compras</h4>
+            <div className="space-y-1.5">
+              {stats.vendasCliente.length === 0 ? (
+                <p className="text-sm text-slate-600 text-center py-4">Nenhuma compra registrada.</p>
+              ) : (
+                stats.vendasCliente.sort((a, b) => new Date(b.data_venda) - new Date(a.data_venda)).slice(0, 15).map(v => (
+                  <div key={v.id} className="flex items-center justify-between bg-slate-900/60 rounded-lg px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-mono text-blue-400">#{v.codigo || v.id.substring(0, 8)}</span>
+                      <p className="text-[10px] text-slate-500">{new Date(v.data_venda).toLocaleDateString('pt-BR')}</p>
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <p className="text-sm font-bold text-slate-100">{fmt(v.total_centavos)}</p>
+                      {v.pagamentos?.some(p => p.metodo === 'Fiado') && (
+                        <span className="text-[9px] font-bold text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded-full">FIADO</span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ── PÁGINA PRINCIPAL ─────────────────────────────────────────────────────────
 export default function ClientesPage() {
   const clientes = useLiveQuery(() => db?.clientes?.toArray() || [], []) || [];
+  const vendas   = useLiveQuery(() => db?.vendas?.toArray()   || [], []) || [];
 
   const [busca,    setBusca]    = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editData, setEditData] = useState(null);
+  const [detalhes, setDetalhes] = useState(null); // cliente para mostrar detalhes
 
   const clientesFiltrados = clientes.filter(c =>
     !busca || c.nome.toLowerCase().includes(busca.toLowerCase()) || (c.telefone || '').includes(busca)
@@ -152,7 +282,7 @@ export default function ClientesPage() {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-5">
-        {/* Desktop: form lateral sempre visível */}
+        {/* Desktop form */}
         <div className="hidden lg:block w-[340px] shrink-0">
           <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden">
             <div className="px-4 pt-4 pb-2 border-b border-slate-800">
@@ -171,7 +301,11 @@ export default function ClientesPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {clientesFiltrados.map(c => (
-              <ClienteCard key={c.id} c={c} onEdit={handleEdit} onDelete={handleDelete} />
+              <ClienteCard key={c.id} c={c}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onDetails={setDetalhes}
+              />
             ))}
             {clientesFiltrados.length === 0 && (
               <div className="col-span-full flex flex-col items-center py-12 text-slate-600">
@@ -200,6 +334,11 @@ export default function ClientesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Detalhes */}
+      {detalhes && (
+        <DetalhesModal cliente={detalhes} vendas={vendas} onClose={() => setDetalhes(null)} />
       )}
     </div>
   );
