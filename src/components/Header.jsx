@@ -41,9 +41,9 @@ export function Header() {
   };
 
   return (
-    <header className="flex items-center justify-between p-4 bg-zinc-950 text-white border-b border-zinc-800">
+    <header className="flex items-center justify-between p-4 bg-slate-950 text-white border-b border-slate-800">
       <div className="flex items-center gap-2">
-        <h1 className="text-xl font-bold text-amber-500 hidden md:block">SDO</h1>
+        <h1 className="text-xl font-bold text-blue-500 hidden md:block">SDO</h1>
       </div>
       
       <div className="flex items-center gap-4">

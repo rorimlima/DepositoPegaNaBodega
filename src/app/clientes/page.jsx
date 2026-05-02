@@ -64,36 +64,36 @@ export default function ClientesPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-amber-500">Gerenciar Clientes</h1>
+      <h1 className="text-2xl font-bold text-blue-500">Gerenciar Clientes</h1>
 
       <div className="flex flex-col lg:flex-row gap-6">
         {/* ── Form ── */}
         <div className="w-full lg:w-[360px] shrink-0">
-          <Card className="bg-zinc-950 border-zinc-800">
+          <Card className="bg-slate-950 border-slate-800">
             <CardContent className="p-4 space-y-4">
-              <h2 className="text-lg font-semibold text-zinc-100">{editId ? '✏️ Editar Cliente' : '👤 Novo Cliente'}</h2>
+              <h2 className="text-lg font-semibold text-slate-100">{editId ? '✏️ Editar Cliente' : '👤 Novo Cliente'}</h2>
               <form onSubmit={handleSubmit} className="space-y-3">
                 <div>
-                  <label className="text-xs text-zinc-500 mb-1 block">Nome Completo *</label>
-                  <Input placeholder="Nome do Cliente" value={nome} onChange={e => setNome(e.target.value)} required className="bg-zinc-900 border-zinc-800" />
+                  <label className="text-xs text-slate-500 mb-1 block">Nome Completo *</label>
+                  <Input placeholder="Nome do Cliente" value={nome} onChange={e => setNome(e.target.value)} required className="bg-slate-900 border-slate-800" />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500 mb-1 block">Telefone</label>
-                  <Input placeholder="(00) 00000-0000" value={telefone} onChange={e => setTelefone(e.target.value)} className="bg-zinc-900 border-zinc-800" />
+                  <label className="text-xs text-slate-500 mb-1 block">Telefone</label>
+                  <Input placeholder="(00) 00000-0000" value={telefone} onChange={e => setTelefone(e.target.value)} className="bg-slate-900 border-slate-800" />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500 mb-1 block flex items-center gap-1">
-                    <MapPin className="h-3 w-3 text-amber-500" /> Endereço
+                  <label className="text-xs text-slate-500 mb-1 block flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-blue-500" /> Endereço
                   </label>
-                  <Input placeholder="Rua, Número, Bairro, Cidade" value={endereco} onChange={e => setEndereco(e.target.value)} className="bg-zinc-900 border-zinc-800" />
+                  <Input placeholder="Rua, Número, Bairro, Cidade" value={endereco} onChange={e => setEndereco(e.target.value)} className="bg-slate-900 border-slate-800" />
                 </div>
                 
                 <div className="flex gap-2">
-                  <Button type="submit" className="flex-1 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold">
+                  <Button type="submit" className="flex-1 bg-blue-500 hover:bg-blue-600 text-slate-950 font-bold">
                     {editId ? <><Save className="mr-2 h-4 w-4" /> Salvar</> : <><Plus className="mr-2 h-4 w-4" /> Cadastrar</>}
                   </Button>
                   {editId && (
-                    <Button type="button" variant="outline" onClick={resetForm} className="border-zinc-800 text-zinc-400 hover:bg-zinc-800">
+                    <Button type="button" variant="outline" onClick={resetForm} className="border-slate-800 text-slate-400 hover:bg-slate-800">
                       <X className="h-4 w-4" />
                     </Button>
                   )}
@@ -106,29 +106,29 @@ export default function ClientesPage() {
         {/* ── Client List ── */}
         <div className="flex-1">
           <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-            <Input placeholder="Buscar cliente por nome ou telefone..." value={busca} onChange={e => setBusca(e.target.value)} className="bg-zinc-900 border-zinc-800 pl-10" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <Input placeholder="Buscar cliente por nome ou telefone..." value={busca} onChange={e => setBusca(e.target.value)} className="bg-slate-900 border-slate-800 pl-10" />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {clientesFiltrados.map(c => (
-              <Card key={c.id} className="bg-zinc-950 border-zinc-800 hover:border-zinc-700 transition-colors">
+              <Card key={c.id} className="bg-slate-950 border-slate-800 hover:border-slate-700 transition-colors">
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                      <User size={18} className="text-amber-500" />
+                    <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                      <User size={18} className="text-blue-500" />
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <h3 className="font-semibold text-zinc-100 line-clamp-1">{c.nome}</h3>
+                      <h3 className="font-semibold text-slate-100 line-clamp-1">{c.nome}</h3>
                       {c.telefone && (
-                        <p className="text-xs text-zinc-400 flex items-center gap-1 mt-1">
+                        <p className="text-xs text-slate-400 flex items-center gap-1 mt-1">
                           <Phone size={10} /> {c.telefone}
                         </p>
                       )}
                       {c.endereco && (
                         <div className="flex items-center gap-1 mt-1">
-                          <MapPin size={10} className="text-zinc-500 shrink-0" />
-                          <p className="text-xs text-zinc-400 line-clamp-1 flex-1">{c.endereco}</p>
+                          <MapPin size={10} className="text-slate-500 shrink-0" />
+                          <p className="text-xs text-slate-400 line-clamp-1 flex-1">{c.endereco}</p>
                           <Button
                             size="sm"
                             variant="ghost"
