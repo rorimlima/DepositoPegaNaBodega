@@ -8,7 +8,7 @@ import { CONFIG } from '../config.js';
 
 Router.register('pdv', async (container) => {
   let produtos = (await SyncEngine.getAll('produtos')).filter(p => p.ativo !== false);
-  const clientes = await SyncEngine.getAll('clientes');
+  let clientes = await SyncEngine.getAll('clientes');
   container.innerHTML = `<div class="page"><div class="pdv-layout">
     <div class="pdv-products">
       <div class="search-bar" style="margin-bottom:8px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" id="pdv-s" placeholder="Buscar produto..."></div>
@@ -16,7 +16,17 @@ Router.register('pdv', async (container) => {
       <div class="product-grid" id="pdv-grid"></div>
     </div>
     <div class="pdv-cart">
-      <div class="cart-header"><div class="form-group" style="margin-bottom:0"><label class="form-label">Cliente</label><select class="form-select" id="pdv-cli">${clientes.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('')}</select></div></div>
+      <div class="cart-header">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Cliente</label>
+          <div class="autocomplete-wrapper" id="client-autocomplete">
+            <svg class="autocomplete-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" class="autocomplete-input" id="pdv-cli-input" placeholder="Buscar cliente..." autocomplete="off">
+            <input type="hidden" id="pdv-cli" value="">
+            <div class="autocomplete-dropdown" id="pdv-cli-dropdown"></div>
+          </div>
+        </div>
+      </div>
       <div class="cart-items" id="cart-items"><div class="empty-state"><p>Carrinho vazio</p></div></div>
       <div class="cart-footer"><div class="cart-total"><span class="cart-total-label">Total</span><span class="cart-total-value" id="cart-total">R$ 0,00</span></div><button class="btn btn-primary btn-block" id="btn-fin" disabled>Finalizar Venda</button></div>
     </div>
@@ -50,10 +60,119 @@ Router.register('pdv', async (container) => {
   Store.onCartChange(renderCart);
   renderCart();
 
+  // Autocomplete Logic
+  let selectedClientId = '';
+  let autocompleteIndex = -1;
+  const cliInput = document.getElementById('pdv-cli-input');
+  const cliHidden = document.getElementById('pdv-cli');
+  const cliDropdown = document.getElementById('pdv-cli-dropdown');
+  
+  const defaultCli = clientes.find(c => c.nome.toLowerCase() === 'cliente balcão') || clientes[0];
+  if (defaultCli) selectClient(defaultCli.id, defaultCli.nome);
+
+  function renderDropdown(query = '') {
+    const q = query.toLowerCase();
+    const filtered = clientes.filter(c => c.nome.toLowerCase().includes(q));
+    let html = '';
+    
+    if (filtered.length === 0) html += `<div class="autocomplete-empty">Nenhum cliente encontrado</div>`;
+    else html += filtered.map((c, i) => `<div class="autocomplete-item" data-index="${i}" data-id="${c.id}" data-name="${c.nome}">${c.nome}</div>`).join('');
+    
+    html += `<div class="autocomplete-action" id="btn-novo-cliente">+ Novo Cliente</div>`;
+    cliDropdown.innerHTML = html;
+    
+    cliDropdown.querySelectorAll('.autocomplete-item').forEach(item => {
+      item.onclick = () => selectClient(item.dataset.id, item.dataset.name);
+    });
+    
+    document.getElementById('btn-novo-cliente').onclick = openNewClientModal;
+    autocompleteIndex = -1;
+  }
+
+  function selectClient(id, name) {
+    selectedClientId = id;
+    cliHidden.value = id;
+    cliInput.value = name;
+    cliDropdown.classList.remove('active');
+  }
+
+  let debounceTimer;
+  cliInput.oninput = (e) => {
+    clearTimeout(debounceTimer);
+    cliDropdown.classList.add('active');
+    debounceTimer = setTimeout(() => renderDropdown(e.target.value), 300);
+  };
+
+  cliInput.onfocus = () => {
+    renderDropdown(cliInput.value);
+    cliDropdown.classList.add('active');
+  };
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#client-autocomplete') && cliDropdown) {
+      cliDropdown.classList.remove('active');
+      if (!cliInput.value && defaultCli) selectClient(defaultCli.id, defaultCli.nome);
+      else {
+        const match = clientes.find(c => c.id === cliHidden.value);
+        if (match) cliInput.value = match.nome;
+      }
+    }
+  });
+
+  cliInput.onkeydown = (e) => {
+    const items = cliDropdown.querySelectorAll('.autocomplete-item');
+    if (!cliDropdown.classList.contains('active')) return;
+    
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      autocompleteIndex = (autocompleteIndex + 1) % items.length;
+      updateHighlight(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      autocompleteIndex = (autocompleteIndex - 1 + items.length) % items.length;
+      updateHighlight(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (autocompleteIndex >= 0 && items[autocompleteIndex]) items[autocompleteIndex].click();
+      else if (items.length > 0) items[0].click();
+      else document.getElementById('btn-novo-cliente').click();
+    } else if (e.key === 'Escape') {
+      cliDropdown.classList.remove('active');
+    }
+  };
+
+  function updateHighlight(items) {
+    items.forEach(i => i.classList.remove('highlighted'));
+    if (autocompleteIndex >= 0 && items[autocompleteIndex]) {
+      items[autocompleteIndex].classList.add('highlighted');
+      items[autocompleteIndex].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function openNewClientModal() {
+    cliDropdown.classList.remove('active');
+    Modal.open('Novo Cliente Rápido', `
+      <div class="form-group"><label class="form-label">Nome do Cliente</label><input type="text" class="form-input" id="nc-nome" value="${cliInput.value}"></div>
+      <div class="form-group"><label class="form-label">Telefone</label><input type="text" class="form-input" id="nc-tel" placeholder="(00) 00000-0000"></div>
+    `, `<button class="btn btn-secondary" id="nc-cancel">Cancelar</button><button class="btn btn-primary" id="nc-save">Salvar</button>`);
+    
+    document.getElementById('nc-cancel').onclick = () => Modal.close();
+    document.getElementById('nc-save').onclick = async () => {
+      const nome = document.getElementById('nc-nome').value.trim();
+      if (!nome) return Toast.warning('Nome obrigatório!');
+      const newCli = { id: Store.generateId(), nome, telefone: document.getElementById('nc-tel').value, is_deleted: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      await SyncEngine.insert('clientes', newCli);
+      clientes.push(newCli);
+      selectClient(newCli.id, newCli.nome);
+      Modal.close();
+      Toast.success('Cliente cadastrado!');
+    };
+  }
+
   document.getElementById('btn-fin').onclick = () => {
     const total = Store.getCartTotal();
     const cliId = document.getElementById('pdv-cli').value;
-    const cliNome = document.getElementById('pdv-cli').selectedOptions[0]?.textContent||'Balcão';
+    const cliNome = document.getElementById('pdv-cli-input').value || 'Balcão';
     Modal.open('Finalizar Venda', `<div style="margin-bottom:16px"><strong>Cliente:</strong> ${cliNome}<br><strong>Total:</strong> <span style="color:var(--accent);font-weight:800;font-size:20px">${Store.formatMoney(total)}</span></div><h4 style="margin-bottom:8px;font-size:14px;color:var(--text-secondary)">Pagamentos</h4><div id="pay-list"></div><button class="btn btn-secondary btn-sm" style="margin-top:8px" id="add-pay">+ Pagamento</button><div id="pay-rem" style="margin-top:12px;font-size:13px"></div>`, `<button class="btn btn-secondary" id="mc">Cancelar</button><button class="btn btn-primary" id="confirm-v">Confirmar</button>`);
     document.getElementById('mc').onclick = () => Modal.close();
     const addRow = () => {

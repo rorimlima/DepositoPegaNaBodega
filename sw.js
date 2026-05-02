@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pegabodega-v2';
+const CACHE_NAME = 'pegabodega-v3';
 const ASSETS = [
   '/',
   '/index.html',
