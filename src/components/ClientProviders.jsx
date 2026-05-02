@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { startAutoSync } from '@/lib/syncEngine';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import LoginPage from '@/components/LoginPage';
+import { DynamicTitle } from '@/components/DynamicTitle';
 
 // Guard interno — só renderiza children se autenticado
 function AuthGuard({ children }) {
@@ -29,6 +30,7 @@ export function ClientProviders({ children }) {
 
   return (
     <AuthProvider>
+      <DynamicTitle />
       <AuthGuard>{children}</AuthGuard>
     </AuthProvider>
   );

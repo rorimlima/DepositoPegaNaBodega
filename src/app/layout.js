@@ -7,9 +7,13 @@ import { ClientProviders } from "@/components/ClientProviders";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "SDO Seu Deposito Online",
-  description: "ERP e PDV Offline-First para Depósito de Bebidas",
-  manifest: "/manifest.json",
+  title: {
+    default: 'Sistema PDV — SDO Seu Deposito Online',
+    template: '%s — SDO',
+  },
+  description: 'Sistema de Gestão e PDV Offline-First para Depósito',
+  manifest: '/manifest.json',
+  applicationName: 'SDO',
 };
 
 export const viewport = {

@@ -1,11 +1,11 @@
 {
-  "name": "SDO Seu Deposito Online",
+  "name": "Sistema PDV — SDO",
   "short_name": "SDO",
-  "description": "ERP e PDV Offline-First para Depósito de Bebidas",
+  "description": "Sistema de Gestão e PDV para Depósito",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#f59e0b",
+  "background_color": "#020617",
+  "theme_color": "#020617",
   "icons": [
     {
       "src": "/favicon.svg",
