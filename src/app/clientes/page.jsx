@@ -7,76 +7,152 @@ import { v4 as uuidv4 } from 'uuid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Trash2, Edit, Plus, User } from 'lucide-react';
+import { Trash2, Edit, Plus, User, MapPin, Phone, Save, X, Navigation, Search } from 'lucide-react';
 
 export default function ClientesPage() {
   const clientes = useLiveQuery(() => db?.clientes?.toArray() || [], []) || [];
   
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
+  const [endereco, setEndereco] = useState('');
+  const [busca, setBusca] = useState('');
+  const [editId, setEditId] = useState(null);
 
-  const handleAdd = async (e) => {
+  const clientesFiltrados = clientes.filter(c =>
+    !busca || c.nome.toLowerCase().includes(busca.toLowerCase()) || (c.telefone || '').includes(busca)
+  );
+
+  const resetForm = () => {
+    setNome(''); setTelefone(''); setEndereco(''); setEditId(null);
+  };
+
+  const startEdit = (c) => {
+    setEditId(c.id);
+    setNome(c.nome);
+    setTelefone(c.telefone || '');
+    setEndereco(c.endereco || '');
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!nome) return;
 
-    const newClient = {
-      id: uuidv4(),
-      nome,
-      telefone
-    };
+    if (editId) {
+      const updated = { id: editId, nome, telefone, endereco };
+      await db.clientes.put(updated);
+      await addToSyncQueue('clientes', 'UPDATE', updated);
+    } else {
+      const newClient = { id: uuidv4(), nome, telefone, endereco };
+      await db.clientes.add(newClient);
+      await addToSyncQueue('clientes', 'INSERT', newClient);
+    }
 
-    await db.clientes.add(newClient);
-    await addToSyncQueue('clientes', 'INSERT', newClient);
-
-    setNome('');
-    setTelefone('');
+    resetForm();
   };
 
   const handleDelete = async (id) => {
+    if (!confirm('Excluir este cliente?')) return;
     await db.clientes.delete(id);
     await addToSyncQueue('clientes', 'DELETE', { id });
   };
 
-  return (
-    <div className="p-4 md:p-6">
-      <h1 className="text-2xl font-bold text-amber-500 mb-6">Gerenciar Clientes</h1>
+  const openInMaps = (addr) => {
+    if (!addr) return;
+    const encoded = encodeURIComponent(addr);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${encoded}`, '_blank');
+  };
 
-      <div className="flex flex-col md:flex-row gap-6">
-        <div className="w-full md:w-1/3">
+  return (
+    <div className="p-4 md:p-6 space-y-6">
+      <h1 className="text-2xl font-bold text-amber-500">Gerenciar Clientes</h1>
+
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* ── Form ── */}
+        <div className="w-full lg:w-[360px] shrink-0">
           <Card className="bg-zinc-950 border-zinc-800">
             <CardContent className="p-4 space-y-4">
-              <h2 className="text-lg font-semibold text-zinc-100">Novo Cliente</h2>
-              <form onSubmit={handleAdd} className="space-y-3">
-                <Input placeholder="Nome Completo" value={nome} onChange={e => setNome(e.target.value)} required className="bg-zinc-900 border-zinc-800" />
-                <Input placeholder="Telefone" value={telefone} onChange={e => setTelefone(e.target.value)} className="bg-zinc-900 border-zinc-800" />
+              <h2 className="text-lg font-semibold text-zinc-100">{editId ? '✏️ Editar Cliente' : '👤 Novo Cliente'}</h2>
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <div>
+                  <label className="text-xs text-zinc-500 mb-1 block">Nome Completo *</label>
+                  <Input placeholder="Nome do Cliente" value={nome} onChange={e => setNome(e.target.value)} required className="bg-zinc-900 border-zinc-800" />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 mb-1 block">Telefone</label>
+                  <Input placeholder="(00) 00000-0000" value={telefone} onChange={e => setTelefone(e.target.value)} className="bg-zinc-900 border-zinc-800" />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 mb-1 block flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-amber-500" /> Endereço
+                  </label>
+                  <Input placeholder="Rua, Número, Bairro, Cidade" value={endereco} onChange={e => setEndereco(e.target.value)} className="bg-zinc-900 border-zinc-800" />
+                </div>
                 
-                <Button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold">
-                  <Plus className="mr-2 h-4 w-4" /> Cadastrar
-                </Button>
+                <div className="flex gap-2">
+                  <Button type="submit" className="flex-1 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold">
+                    {editId ? <><Save className="mr-2 h-4 w-4" /> Salvar</> : <><Plus className="mr-2 h-4 w-4" /> Cadastrar</>}
+                  </Button>
+                  {editId && (
+                    <Button type="button" variant="outline" onClick={resetForm} className="border-zinc-800 text-zinc-400 hover:bg-zinc-800">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </form>
             </CardContent>
           </Card>
         </div>
 
+        {/* ── Client List ── */}
         <div className="flex-1">
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+            <Input placeholder="Buscar cliente por nome ou telefone..." value={busca} onChange={e => setBusca(e.target.value)} className="bg-zinc-900 border-zinc-800 pl-10" />
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {clientes.map(c => (
-              <Card key={c.id} className="bg-zinc-950 border-zinc-800 flex flex-row items-center p-4 gap-4">
-                <div className="h-12 w-12 rounded-full bg-zinc-900 flex items-center justify-center shrink-0">
-                  <User size={20} className="text-zinc-500" />
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <h3 className="font-semibold text-zinc-100 line-clamp-1">{c.nome}</h3>
-                  <p className="text-xs text-zinc-400">{c.telefone || 'Sem telefone'}</p>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button size="icon" variant="outline" className="h-8 w-8 text-red-500 border-zinc-800 hover:bg-red-500/20" onClick={() => handleDelete(c.id)}>
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
+            {clientesFiltrados.map(c => (
+              <Card key={c.id} className="bg-zinc-950 border-zinc-800 hover:border-zinc-700 transition-colors">
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                      <User size={18} className="text-amber-500" />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <h3 className="font-semibold text-zinc-100 line-clamp-1">{c.nome}</h3>
+                      {c.telefone && (
+                        <p className="text-xs text-zinc-400 flex items-center gap-1 mt-1">
+                          <Phone size={10} /> {c.telefone}
+                        </p>
+                      )}
+                      {c.endereco && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <MapPin size={10} className="text-zinc-500 shrink-0" />
+                          <p className="text-xs text-zinc-400 line-clamp-1 flex-1">{c.endereco}</p>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openInMaps(c.endereco)}
+                            className="h-6 px-2 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 shrink-0"
+                          >
+                            <Navigation size={10} className="mr-1" /> Maps
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button size="icon" variant="outline" className="h-7 w-7 text-zinc-400 border-zinc-800 hover:bg-zinc-800" onClick={() => startEdit(c)}>
+                        <Edit size={12} />
+                      </Button>
+                      <Button size="icon" variant="outline" className="h-7 w-7 text-red-500 border-zinc-800 hover:bg-red-500/20" onClick={() => handleDelete(c.id)}>
+                        <Trash2 size={12} />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
               </Card>
             ))}
-            {clientes.length === 0 && <p className="text-zinc-500">Nenhum cliente cadastrado.</p>}
+            {clientesFiltrados.length === 0 && <p className="text-zinc-500 col-span-full">Nenhum cliente encontrado.</p>}
           </div>
         </div>
       </div>
