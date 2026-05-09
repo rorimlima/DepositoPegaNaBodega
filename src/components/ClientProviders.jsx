@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { startAutoSync } from '@/lib/syncEngine';
+import { startAutoSync, fullSync } from '@/lib/syncEngine';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import LoginPage from '@/components/LoginPage';
 import { DynamicTitle } from '@/components/DynamicTitle';
@@ -25,7 +25,45 @@ function AuthGuard({ children }) {
 
 export function ClientProviders({ children }) {
   useEffect(() => {
+    // Inicia auto-sync com intervalo de 30s
     startAutoSync(30000);
+
+    // Registra Background Sync no Service Worker
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'REGISTER_SYNC' });
+
+      // Escuta mensagens do SW para trigger sync
+      const handleMessage = (event) => {
+        if (event.data?.type === 'TRIGGER_SYNC') {
+          fullSync().catch(console.error);
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleMessage);
+
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleMessage);
+      };
+    }
+  }, []);
+
+  // Registra o background sync quando houver itens pendentes
+  useEffect(() => {
+    const registerBackgroundSync = async () => {
+      if ('serviceWorker' in navigator && 'SyncManager' in window) {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          await reg.sync.register('sync-queue');
+        } catch (_) {
+          // Background Sync não suportado neste browser
+        }
+      }
+    };
+
+    // Escuta mudanças de online/offline para registrar sync
+    const handleOffline = () => registerBackgroundSync();
+    window.addEventListener('offline', handleOffline);
+
+    return () => window.removeEventListener('offline', handleOffline);
   }, []);
 
   return (

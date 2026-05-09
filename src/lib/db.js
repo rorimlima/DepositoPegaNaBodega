@@ -29,6 +29,28 @@ db.version(3).stores({
   usuarios: 'id, login, role' // role: 'admin' | 'operador'
 });
 
+// ── v4: Adiciona updated_at + sync_meta para sync bidirecional ──────────────
+db.version(4).stores({
+  empresa: 'id',
+  clientes: 'id, nome, telefone',
+  produtos: 'id, codigo, nome, categoria',
+  vendas: 'id, cliente_id, data_venda',
+  sync_queue: '++id, table, action, timestamp',
+  usuarios: 'id, login, role',
+  sync_meta: 'table_name'  // armazena último timestamp de pull por tabela
+}).upgrade(tx => {
+  // Adiciona updated_at em registros existentes que não tenham
+  const now = new Date().toISOString();
+  const tables = ['empresa', 'clientes', 'produtos', 'vendas', 'usuarios'];
+  return Promise.all(tables.map(tableName =>
+    tx.table(tableName).toCollection().modify(record => {
+      if (!record.updated_at) {
+        record.updated_at = now;
+      }
+    })
+  ));
+});
+
 // Seed: cria o usuário master se não existir
 db.on('ready', async () => {
   try {
@@ -42,6 +64,7 @@ db.on('ready', async () => {
         role: 'admin',
         ativo: true,
         criado_em: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
     }
   } catch (e) {
@@ -49,8 +72,29 @@ db.on('ready', async () => {
   }
 });
 
+/**
+ * Adiciona uma operação à fila de sincronização.
+ * Automaticamente injeta updated_at nos dados.
+ */
 export async function addToSyncQueue(table, action, data) {
-  await db.sync_queue.add({ table, action, data, timestamp: new Date().getTime() });
+  const enriched = { ...data, updated_at: new Date().toISOString() };
+
+  // Atualiza o registro local com updated_at também
+  if (action !== 'DELETE' && db[table]) {
+    try {
+      await db[table].update(data.id, { updated_at: enriched.updated_at });
+    } catch (_) {
+      // ignora se o registro não existe localmente
+    }
+  }
+
+  await db.sync_queue.add({
+    table,
+    action,
+    data: enriched,
+    timestamp: Date.now(),
+    retries: 0,
+  });
 }
 
 // ── Auth helpers ─────────────────────────────────────────────────────────────
