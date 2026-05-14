@@ -29,6 +29,20 @@ db.version(3).stores({
   usuarios: 'id, login, role' // role: 'admin' | 'operador'
 });
 
+// ── v4: Adiciona tabela de comandas (mesas) ──────────────────────────────────
+// status: 'aberta' | 'faturando' | 'concluida'
+// itens: array de { produto_id, nome, preco_centavos, qtde }
+// pagamentos: array de { metodo, valor (float R$), cliente_id? }
+db.version(4).stores({
+  empresa: 'id',
+  clientes: 'id, nome, telefone',
+  produtos: 'id, codigo, nome, categoria',
+  vendas: 'id, cliente_id, data_venda',
+  sync_queue: '++id, table, action, timestamp',
+  usuarios: 'id, login, role',
+  comandas: 'id, mesa, status, aberta_em, concluida_em',
+});
+
 // Seed: cria o usuário master se não existir
 db.on('ready', async () => {
   try {
