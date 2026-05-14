@@ -1,5 +1,5 @@
 import { db } from './db';
-import { supabase } from './supabase';
+import { supabase, isSupabaseReady } from './supabase';
 
 // ── Mapeamento: campo Dexie (local) → coluna Supabase (remota) ────────────────
 const FIELD_MAPS = {
@@ -19,7 +19,7 @@ const FIELD_MAPS = {
     endereco:   'endereco',
     logoBase64: 'logoBase64',
   },
-  clientes:  null, // sem mapeamento especial — nomes iguais
+  clientes:  null,
   vendas:    null,
   usuarios:  null,
   comandas:  null,
@@ -28,18 +28,38 @@ const FIELD_MAPS = {
 function mapPayload(table, data) {
   const map = FIELD_MAPS[table];
   if (!map) return data;
-
   const result = {};
   for (const [key, val] of Object.entries(data)) {
-    const mappedKey = map[key] ?? key; // usa o mapeamento ou o próprio nome
+    const mappedKey = map[key] ?? key;
     result[mappedKey] = val;
   }
   return result;
 }
 
+// ── Sync Status (usado pelo Header e outros) ─────────────────────────────────
+let _syncStatus = { isSyncing: false, lastSync: null, lastError: null };
+const _listeners = new Set();
+
+export function getSyncStatus() {
+  return { ..._syncStatus };
+}
+
+export function onSyncStatusChange(cb) {
+  _listeners.add(cb);
+  return () => _listeners.delete(cb);
+}
+
+function _notifyStatus(update) {
+  _syncStatus = { ..._syncStatus, ...update };
+  _listeners.forEach(cb => {
+    try { cb(_syncStatus); } catch (_) {}
+  });
+}
+
 // ── PUSH: Local → Supabase ───────────────────────────────────────────────────
 export async function syncData() {
   if (typeof navigator === 'undefined' || !navigator.onLine) return { success: false, message: 'Offline' };
+  if (!isSupabaseReady()) return { success: false, message: 'Supabase not configured' };
 
   try {
     const queue = await db.sync_queue.orderBy('timestamp').toArray();
@@ -64,7 +84,13 @@ export async function syncData() {
         syncedCount++;
       } catch (err) {
         console.error(`[SyncEngine] Erro na tabela "${item.table}" | Ação "${item.action}":`, err?.message || err);
-        break; // Interrompe na primeira falha para manter ordem
+        // Pular itens com erro (não bloquear a fila inteira)
+        // Se for 404 (tabela não existe no Supabase), pular
+        if (err?.code === '42P01' || err?.message?.includes('404')) {
+          await db.sync_queue.delete(item.id);
+          continue;
+        }
+        break;
       }
     }
 
@@ -75,8 +101,7 @@ export async function syncData() {
   }
 }
 
-// ── PULL: Supabase → Local (Download de dados existentes) ────────────────────
-// Tabelas que devem ser puxadas do Supabase para popular o IndexedDB local
+// ── PULL: Supabase → Local ───────────────────────────────────────────────────
 const PULL_TABLES = [
   { table: 'produtos',  dexieStore: 'produtos' },
   { table: 'clientes',  dexieStore: 'clientes' },
@@ -84,7 +109,6 @@ const PULL_TABLES = [
   { table: 'usuarios',  dexieStore: 'usuarios' },
 ];
 
-// Converte campos numéricos que vêm como string do Supabase
 function normalizeNumericFields(row) {
   const numericFields = ['custo_centavos', 'preco_centavos', 'quantidade', 'total', 'total_centavos', 'preco_unitario', 'subtotal', 'valor'];
   const result = { ...row };
@@ -97,19 +121,14 @@ function normalizeNumericFields(row) {
 }
 
 export async function pullFromSupabase() {
-  if (typeof navigator === 'undefined' || !navigator.onLine) {
-    console.log('[Pull] Offline, skipping');
-    return { success: false, message: 'Offline' };
-  }
+  if (typeof navigator === 'undefined' || !navigator.onLine) return { success: false, message: 'Offline' };
+  if (!isSupabaseReady()) return { success: false, message: 'Supabase not configured' };
 
   let totalPulled = 0;
 
   for (const { table, dexieStore } of PULL_TABLES) {
     try {
-      // Buscar todos os registros ativos do Supabase
       let query = supabase.from(table).select('*');
-
-      // Nem todas as tabelas têm is_deleted
       if (['produtos', 'clientes', 'empresa', 'vendas', 'usuarios'].includes(table)) {
         query = query.eq('is_deleted', false);
       }
@@ -117,36 +136,24 @@ export async function pullFromSupabase() {
       const { data, error } = await query;
 
       if (error) {
-        console.warn(`[Pull] Erro ao buscar ${table}:`, error.message, error.code, error.details);
+        console.warn(`[Pull] Erro ao buscar ${table}:`, error.message);
         continue;
       }
+      if (!data || data.length === 0) continue;
 
-      if (!data || data.length === 0) {
-        console.log(`[Pull] ${table}: 0 registros no Supabase`);
-        continue;
-      }
+      console.log(`[Pull] ${table}: ${data.length} registros recebidos`);
 
-      console.log(`[Pull] ${table}: ${data.length} registros recebidos do Supabase`);
-
-      // Acessar store do Dexie
       const store = db[dexieStore];
-      if (!store) {
-        console.warn(`[Pull] Store "${dexieStore}" não encontrada no Dexie`);
-        continue;
-      }
+      if (!store) continue;
 
-      // Processar cada registro
       for (const rawRow of data) {
         try {
           const row = normalizeNumericFields(rawRow);
-
           const existing = await store.get(row.id);
           if (!existing) {
-            // Registro novo — inserir
-            await store.put(row); // usar put ao invés de add para evitar erros de duplicata
+            await store.put(row);
             totalPulled++;
           } else {
-            // Registro existe — atualizar se o remoto for mais recente
             const remoteUpdated = row.updated_at ? new Date(row.updated_at).getTime() : 0;
             const localUpdated = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
             if (remoteUpdated > localUpdated) {
@@ -155,30 +162,58 @@ export async function pullFromSupabase() {
             }
           }
         } catch (rowErr) {
-          console.warn(`[Pull] Erro ao processar registro ${rawRow.id} em ${table}:`, rowErr?.message || rowErr);
+          console.warn(`[Pull] Erro registro ${rawRow.id} em ${table}:`, rowErr?.message);
         }
       }
-
     } catch (err) {
-      console.warn(`[Pull] Falha geral em ${table}:`, err?.message || err);
+      console.warn(`[Pull] Falha em ${table}:`, err?.message);
     }
   }
 
-  console.log(`[Pull] ✅ Total sincronizado: ${totalPulled} registros`);
+  console.log(`[Pull] ✅ ${totalPulled} registros sincronizados`);
   return { success: true, pulled: totalPulled };
 }
 
-// ── Auto Sync (PULL + PUSH) ──────────────────────────────────────────────────
+// ── fullSync: Pull + Push combinados (chamado pelo Header e SyncBootstrap) ───
+export async function fullSync() {
+  if (typeof navigator === 'undefined' || !navigator.onLine) return { success: false, error: 'Offline' };
+  if (!isSupabaseReady()) return { success: false, error: 'Supabase not configured' };
+
+  _notifyStatus({ isSyncing: true, lastError: null });
+
+  try {
+    await db.open();
+
+    // Pull primeiro (baixar dados do servidor)
+    const pullResult = await pullFromSupabase();
+
+    // Push depois (enviar mudanças locais)
+    const pushResult = await syncData();
+
+    const now = new Date().toISOString();
+    _notifyStatus({ isSyncing: false, lastSync: now, lastError: null });
+
+    return {
+      success: true,
+      pulled: pullResult.pulled || 0,
+      pushed: pushResult.count || 0,
+    };
+  } catch (err) {
+    const errorMsg = err?.message || 'Erro desconhecido';
+    _notifyStatus({ isSyncing: false, lastError: errorMsg });
+    console.error('[SyncEngine] ❌ fullSync error:', errorMsg);
+    return { success: false, error: errorMsg };
+  }
+}
+
+// ── Auto Sync ────────────────────────────────────────────────────────────────
 export function startAutoSync(intervalMs = 30000) {
-  // Pull inicial ao abrir o app (baixar dados do Supabase)
-  // Usar timeout maior para garantir que o DB está pronto
+  // Sync inicial ao abrir o app
   setTimeout(async () => {
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
-      console.log('[SyncEngine] 🔄 Iniciando Pull inicial...');
+    if (typeof navigator !== 'undefined' && navigator.onLine && isSupabaseReady()) {
+      console.log('[SyncEngine] 🔄 Pull inicial...');
       try {
-        await db.open(); // garante que o db está aberto
-        await pullFromSupabase();
-        await syncData();
+        await fullSync();
         console.log('[SyncEngine] ✅ Pull inicial concluído');
       } catch (err) {
         console.error('[SyncEngine] ❌ Erro no Pull inicial:', err);
@@ -186,12 +221,11 @@ export function startAutoSync(intervalMs = 30000) {
     }
   }, 2500);
 
-  // Sync periódico (push primeiro, depois pull)
+  // Sync periódico
   setInterval(async () => {
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine && isSupabaseReady()) {
       try {
-        await syncData();
-        await pullFromSupabase();
+        await fullSync();
       } catch (err) {
         console.error('[SyncEngine] Erro no sync periódico:', err);
       }
