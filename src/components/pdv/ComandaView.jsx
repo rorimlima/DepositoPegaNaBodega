@@ -1,5 +1,5 @@
 'use client';
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   Trash2, Plus, Minus, ShoppingCart, Search, Package,
   X, ArrowLeft, Receipt, Clock, UserPlus, User as UserIcon,
