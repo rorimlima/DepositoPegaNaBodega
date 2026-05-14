@@ -215,6 +215,27 @@ export default function PDVPage() {
     const itens = comandaAtual.itens || [];
     const totalCentavos = itens.reduce((a, i) => a + i.preco_centavos * i.qtde, 0);
 
+    // ── Validação de negócio: pagamento deve cobrir o total ────────────────
+    const totalPagoCentavos = pagamentos.reduce(
+      (a, p) => a + Math.round(parseFloat(p.valor || 0) * 100), 0
+    );
+
+    // Verifica se algum Fiado ficou sem cliente
+    const fiadoSemCliente = pagamentos.some(
+      p => p.metodo === 'Fiado' && !p.cliente_id && Math.round(parseFloat(p.valor || 0) * 100) > 0
+    );
+    if (fiadoSemCliente) {
+      console.warn('[PDV] Tentativa de finalizar com Fiado sem cliente vinculado');
+      return;
+    }
+
+    // Só finaliza se o total pago cobre o total da compra
+    const pagamentoQuitado = totalPagoCentavos >= totalCentavos;
+    if (!pagamentoQuitado) {
+      console.warn(`[PDV] Pagamento insuficiente: pago=${totalPagoCentavos} total=${totalCentavos}`);
+      return; // UI já bloqueia, mas safety net
+    }
+
     // 1. Criar venda (compatível com o sistema existente)
     const venda = {
       id: uuidv4(),
@@ -226,6 +247,7 @@ export default function PDVPage() {
       itens: itens.map(i => ({ id: i.id, nome: i.nome, preco_centavos: i.preco_centavos, qtde: i.qtde })),
       mesa: comandaAtual.mesa,
       comanda_id: comandaAtual.id,
+      status: 'finalizada', // venda concluída com pagamento quitado
     };
     await db.vendas.add(venda);
     await addToSyncQueue('vendas', 'INSERT', venda);
@@ -240,8 +262,16 @@ export default function PDVPage() {
       }
     }
 
-    // 3. Fechar comanda
-    const concluida = { ...comandaAtual, status: 'concluida', pagamentos, concluida_em: new Date().toISOString() };
+    // 3. Fechar comanda — SOMENTE com status 'concluida' se pagamento quitou
+    const concluida = {
+      ...comandaAtual,
+      status: 'concluida',
+      pagamentos,
+      concluida_em: new Date().toISOString(),
+      total_centavos: totalCentavos,
+      total_pago_centavos: totalPagoCentavos,
+      troco_centavos: Math.max(0, totalPagoCentavos - totalCentavos),
+    };
     await db.comandas.put(concluida);
     await addToSyncQueue('comandas', 'UPDATE', concluida);
 

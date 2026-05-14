@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, ShoppingCart, Users, Package,
-  Settings, UserCog, Receipt, Landmark
+  Settings, UserCog, Receipt, Landmark, Wallet
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import clsx from 'clsx';
@@ -18,6 +18,7 @@ const allNavItems = [
   { name: 'Clientes',   href: '/clientes',    icon: Users,           roles: ['admin'] },
   { name: 'Produtos',   href: '/produtos',    icon: Package,         roles: ['admin'] },
   { name: 'Financeiro', href: '/financeiro',  icon: Landmark,        roles: ['admin'] },
+  { name: 'Caixa',      href: '/caixa',       icon: Wallet,          roles: ['admin'] },
   { name: 'Usuários',   href: '/usuarios',    icon: UserCog,         roles: ['admin'] },
   { name: 'Empresa',    href: '/empresa',     icon: Settings,        roles: ['admin'] },
 ];

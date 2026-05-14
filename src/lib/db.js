@@ -56,6 +56,22 @@ db.version(4).stores({
   ));
 });
 
+// ── v5: Fechamento de Caixa + Movimentações ──────────────────────────────────
+// fechamentos_caixa: registro diário de conferência do caixa
+// movimentacoes_caixa: sangrias e suprimentos do dia
+db.version(5).stores({
+  empresa: 'id',
+  clientes: 'id, nome, telefone',
+  produtos: 'id, codigo, nome, categoria',
+  vendas: 'id, cliente_id, data_venda',
+  sync_queue: '++id, table, action, timestamp',
+  usuarios: 'id, login, role',
+  comandas: 'id, mesa, status, aberta_em, concluida_em',
+  sync_meta: 'table_name',
+  fechamentos_caixa: 'id, data, operador_id, status',
+  movimentacoes_caixa: 'id, fechamento_id, tipo, data',
+});
+
 // Seed: cria o usuário master se não existir
 db.on('ready', async () => {
   try {
