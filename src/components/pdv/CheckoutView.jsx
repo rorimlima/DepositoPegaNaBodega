@@ -127,6 +127,11 @@ export default memo(function CheckoutView({
   const itens = comanda?.itens || [];
   const totalCentavos = useMemo(() => itens.reduce((a, i) => a + i.preco_centavos * i.qtde, 0), [itens]);
 
+  const clienteAtual = useMemo(() => {
+    if (!comanda?.cliente_id) return null;
+    return clientes.find(c => c.id === comanda.cliente_id) || null;
+  }, [comanda?.cliente_id, clientes]);
+
   const [pagamentos, setPagamentos] = useState([{ valor: '', metodo: 'Dinheiro', cliente_id: null, cliente_nome: '' }]);
   const [clienteModalIdx, setClienteModalIdx] = useState(null); // idx do pagamento que precisa de cliente
 
@@ -169,9 +174,18 @@ export default memo(function CheckoutView({
     setPagamentos(p => [...p, { valor: '', metodo: 'PIX', cliente_id: null, cliente_nome: '' }]),
   []);
 
-  const handleUpdatePag = useCallback((idx, field, val) =>
-    setPagamentos(p => p.map((x, i) => i === idx ? { ...x, [field]: val } : x)),
-  []);
+  const handleUpdatePag = useCallback((idx, field, val) => {
+    setPagamentos(p => p.map((x, i) => {
+      if (i !== idx) return x;
+      const next = { ...x, [field]: val };
+      // Auto-preencher cliente no Fiado se a comanda já tem um
+      if (field === 'metodo' && val === 'Fiado' && !next.cliente_id && clienteAtual) {
+        next.cliente_id = clienteAtual.id;
+        next.cliente_nome = clienteAtual.nome;
+      }
+      return next;
+    }));
+  }, [clienteAtual]);
 
   const handleRemovePag = useCallback((idx) =>
     setPagamentos(p => p.filter((_, i) => i !== idx)),
@@ -208,6 +222,12 @@ export default memo(function CheckoutView({
           <div className="flex items-center gap-2">
             <span className="text-lg font-black text-blue-500">Fechamento · {mesa === 0 ? 'Venda Balcão' : `Mesa ${String(mesa).padStart(2, '0')}`}</span>
           </div>
+          {clienteAtual && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <UserIcon size={12} className="text-emerald-500" />
+              <span className="text-xs font-medium text-emerald-500">{clienteAtual.nome}</span>
+            </div>
+          )}
         </div>
       </div>
 

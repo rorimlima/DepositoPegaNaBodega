@@ -48,16 +48,74 @@ const ProdutoBtn = memo(function ProdutoBtn({ p, onAdd }) {
   );
 });
 
+// ── Cliente Search Modal ─────────────────────────────────────────────────────
+const ClienteModal = memo(function ClienteModal({ clientes, onSelect, onClose, onQuickAdd }) {
+  const [busca, setBusca] = useState('');
+  const filtrados = useMemo(() => {
+    if (!busca) return clientes.slice(0, 20);
+    const q = busca.toLowerCase();
+    return clientes.filter(c => c.nome.toLowerCase().includes(q) || (c.telefone || '').includes(q)).slice(0, 20);
+  }, [clientes, busca]);
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-slate-950 border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl overflow-hidden max-h-[80dvh] flex flex-col">
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+          <h3 className="font-bold text-slate-100 flex items-center gap-2">
+            <UserIcon size={16} className="text-blue-500" /> Selecionar Cliente
+          </h3>
+          <button onClick={onClose} className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400"><X size={16} /></button>
+        </div>
+        <div className="p-3 border-b border-slate-800">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <input autoFocus placeholder="Buscar cliente..." value={busca} onChange={e => setBusca(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 h-11 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60">
+          {filtrados.map(c => (
+            <button key={c.id} onClick={() => onSelect(c)}
+              className="w-full px-4 py-3 text-left hover:bg-slate-800 transition-colors flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                <UserIcon size={14} className="text-blue-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-100 truncate">{c.nome}</p>
+                {c.telefone && <p className="text-[11px] text-slate-500">{c.telefone}</p>}
+              </div>
+            </button>
+          ))}
+          {filtrados.length === 0 && <p className="text-center text-sm text-slate-600 py-8">Nenhum cliente encontrado</p>}
+        </div>
+        <div className="p-3 border-t border-slate-800 shrink-0">
+          <button onClick={onQuickAdd}
+            className="w-full h-11 rounded-xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:bg-blue-700">
+            <UserPlus size={14} /> Cadastro Rápido
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // ── COMANDA VIEW ─────────────────────────────────────────────────────────────
 export default memo(function ComandaView({
   mesa, comanda, produtos, clientes,
   buscaProduto, onBuscaProdutoChange,
   onAddItem, onUpdateQtde, onRemoveItem,
-  onPedirConta, onVoltar,
+  onUpdateCliente,
+  onPedirConta, onVoltar, onOpenCadastroRapido
 }) {
+  const [showClienteModal, setShowClienteModal] = useState(false);
   const itens = comanda?.itens || [];
   const totalCentavos = useMemo(() => itens.reduce((a, i) => a + i.preco_centavos * i.qtde, 0), [itens]);
   const totalItens = useMemo(() => itens.reduce((a, i) => a + i.qtde, 0), [itens]);
+
+  const clienteAtual = useMemo(() => {
+    if (!comanda?.cliente_id) return null;
+    return clientes.find(c => c.id === comanda.cliente_id) || null;
+  }, [comanda?.cliente_id, clientes]);
 
   const produtosFiltrados = useMemo(() => {
     if (!buscaProduto) return produtos;
@@ -78,13 +136,28 @@ export default memo(function ComandaView({
             <ArrowLeft size={18} />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-black text-blue-500">{mesa === 0 ? 'Venda Balcão' : `Mesa ${String(mesa).padStart(2, '0')}`}</span>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
-                {comanda?.status === 'faturando' ? 'Fechando' : 'Aberta'}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-lg font-black text-blue-500 leading-none">
+                {mesa === 0 ? 'Venda Balcão' : `Mesa ${String(mesa).padStart(2, '0')}`}
               </span>
+              
+              {/* Seleção de Cliente no Cabeçalho */}
+              {clienteAtual ? (
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-lg max-w-[150px] sm:max-w-[200px]">
+                  <UserIcon size={12} className="text-emerald-400 shrink-0" />
+                  <span className="text-xs text-emerald-400 font-medium truncate">{clienteAtual.nome}</span>
+                  <button onClick={() => onUpdateCliente(null)} className="text-emerald-400/50 hover:text-emerald-400 ml-1 shrink-0">
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setShowClienteModal(true)} className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded-lg text-xs font-medium transition-colors">
+                  <UserIcon size={12} /> + Cliente
+                </button>
+              )}
+
             </div>
-            <p className="text-[10px] text-slate-500 flex items-center gap-1">
+            <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-1.5">
               <Clock size={9} /> {tempoAberta}min · {totalItens} itens · {fmtBRL(totalCentavos)}
             </p>
           </div>
@@ -153,6 +226,16 @@ export default memo(function ComandaView({
           <Receipt size={16} /> Fechar Conta
         </button>
       </div>
+
+      {/* Modal seleção de cliente */}
+      {showClienteModal && (
+        <ClienteModal
+          clientes={clientes}
+          onSelect={(c) => { onUpdateCliente(c.id); setShowClienteModal(false); }}
+          onClose={() => setShowClienteModal(false)}
+          onQuickAdd={() => { setShowClienteModal(false); onOpenCadastroRapido(); }}
+        />
+      )}
     </div>
   );
 });

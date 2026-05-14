@@ -183,6 +183,14 @@ export default function PDVPage() {
     await addToSyncQueue('comandas', 'UPDATE', updated);
   }, [comandaAtual]);
 
+  // ── Atualizar Cliente da Comanda ───────────────────────────────────────────
+  const handleUpdateCliente = useCallback(async (clienteId) => {
+    if (!comandaAtual) return;
+    const updated = { ...comandaAtual, cliente_id: clienteId };
+    await db.comandas.put(updated);
+    await addToSyncQueue('comandas', 'UPDATE', updated);
+  }, [comandaAtual]);
+
   // ── Pedir conta (ir para checkout) ─────────────────────────────────────────
   const handlePedirConta = useCallback(async () => {
     if (!comandaAtual) return;
@@ -240,7 +248,7 @@ export default function PDVPage() {
     const venda = {
       id: uuidv4(),
       codigo: comandaAtual.codigo || gerarCodigo(),
-      cliente_id: pagamentos.find(p => p.cliente_id)?.cliente_id || null,
+      cliente_id: comandaAtual.cliente_id || pagamentos.find(p => p.cliente_id)?.cliente_id || null,
       total_centavos: totalCentavos,
       data_venda: new Date().toISOString(),
       pagamentos,
@@ -335,8 +343,10 @@ export default function PDVPage() {
           onAddItem={handleAddItem}
           onUpdateQtde={handleUpdateQtde}
           onRemoveItem={handleRemoveItem}
+          onUpdateCliente={handleUpdateCliente}
           onPedirConta={handlePedirConta}
           onVoltar={handleVoltar}
+          onOpenCadastroRapido={() => setModalCadastro(true)}
         />
       )}
 
