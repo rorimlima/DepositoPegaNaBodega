@@ -32,6 +32,15 @@ export function Header() {
   useEffect(() => { setSupabaseOk(isSupabaseReady()); }, []);
 
   useEffect(() => {
+    // Temporary dump
+    db.sync_queue.toArray().then(queue => {
+      if (queue.length > 0) {
+        fetch('/api/dump-queue', { method: 'POST', body: JSON.stringify(queue) });
+      }
+    });
+  }, [pendingCount]);
+
+  useEffect(() => {
     setIsOnline(navigator.onLine);
     const up = () => setIsOnline(true);
     const dn = () => setIsOnline(false);
