@@ -86,12 +86,20 @@ export async function syncData() {
         syncedCount++;
       } catch (err) {
         console.error(`[SyncEngine] Erro na tabela "${item.table}" | Ação "${item.action}":`, err?.message || err);
-        // Pular itens com erro (não bloquear a fila inteira)
-        // Se for 404 (tabela não existe no Supabase), pular
-        if (err?.code === '42P01' || err?.message?.includes('404')) {
+        
+        // ── Tratamento Resiliente e Inteligente de Erros ───────────────────
+        const isDbError = err?.code && err.code !== 'PGRST000'; // Códigos do Postgres (ex: 23505, 42703)
+        const isClientError = err?.status && err.status >= 400 && err.status < 500; // 400 Bad Request, 403 Forbidden, 409 Conflict
+        const isNotFoundError = err?.code === '42P01' || err?.message?.includes('404');
+        
+        if (isDbError || isClientError || isNotFoundError) {
+          // Erro permanente do dado ou estrutura. Deletar da fila para não travar o sync subsequente.
+          console.warn(`[SyncEngine] Removendo item ${item.id} de "${item.table}" por erro permanente no Supabase:`, err?.message || err);
           await db.sync_queue.delete(item.id);
           continue;
         }
+        
+        // Se for erro de rede/servidor temporário, para a execução (break) para tentar no próximo ciclo
         break;
       }
     }
@@ -235,4 +243,35 @@ export function startAutoSync(intervalMs = 30000) {
       }
     }
   }, intervalMs);
+}
+
+// ── Sincronização Imediata ao Salvar (Hook do Dexie) ──────────────────────────
+let _debounceTimeout = null;
+
+export function triggerImmediateSync() {
+  if (typeof navigator === 'undefined' || !navigator.onLine) return;
+  if (!isSupabaseReady()) return;
+  
+  if (_debounceTimeout) clearTimeout(_debounceTimeout);
+  
+  _debounceTimeout = setTimeout(async () => {
+    try {
+      console.log('[SyncEngine] ⚡ Disparando sincronização imediata por alteração de dados...');
+      await syncData(); // Envia as alterações locais imediatamente em segundo plano
+    } catch (e) {
+      console.warn('[SyncEngine] Falha no sync imediato:', e);
+    }
+  }, 1000); // 1 segundo de delay (debounce)
+}
+
+// Registrar o hook na tabela sync_queue para observar novas inserções
+if (typeof window !== 'undefined' && db && db.sync_queue) {
+  try {
+    db.sync_queue.hook('creating', function() {
+      triggerImmediateSync();
+    });
+    console.log('[SyncEngine] ✅ Hook de sincronização imediata registrado com sucesso!');
+  } catch (err) {
+    console.warn('[SyncEngine] Não foi possível registrar o hook do Dexie:', err);
+  }
 }
