@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, ShoppingCart, Users, Package,
-  Settings, UserCog, Receipt, Landmark, Wallet
+  Settings, UserCog, Receipt, Landmark, Wallet,
+  Menu, X
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import clsx from 'clsx';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // Definição das rotas e quais roles podem acessar
 const allNavItems = [
@@ -23,8 +24,8 @@ const allNavItems = [
   { name: 'Empresa',    href: '/empresa',     icon: Settings,        roles: ['admin'] },
 ];
 
-// Itens para a bottom nav (mobile) — máximo 5 para caber
-const mobileNavPriority = ['/', '/pdv', '/vendas', '/financeiro', '/clientes'];
+// Itens para a bottom nav (mobile) — máximo 4 para sobrar espaço para o botão "Mais/Menu"
+const mobileNavPriority = ['/pdv', '/vendas', '/produtos', '/'];
 
 function useNavItems() {
   const { usuario } = useAuth();
@@ -92,47 +93,142 @@ export function Sidebar() {
 export function BottomNav() {
   const pathname = usePathname();
   const navItems = useNavItems();
+  const [menuAberto, setMenuAberto] = useState(false);
 
-  // Filtrar para mostrar apenas os prioritários no mobile (max 5)
-  const mobileItems = navItems.filter(item => mobileNavPriority.includes(item.href));
+  // Itens que vão direto para a barra inferior (se o usuário tiver acesso)
+  const itensPrincipais = navItems.filter(item => mobileNavPriority.includes(item.href));
+  
+  // Itens que sobram e vão para o menu "Mais" (se o usuário tiver acesso)
+  const itensAdicionais = navItems.filter(item => !mobileNavPriority.includes(item.href));
+
+  // Se houver itens adicionais, o botão "Mais" será exibido
+  const temMais = itensAdicionais.length > 0;
 
   return (
-    <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 transition-colors"
-      role="navigation"
-      aria-label="Menu mobile"
-    >
-      <div className="flex items-stretch justify-around" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-        {mobileItems.map(({ name, href, icon: Icon }) => {
-          const active = pathname === href;
-          return (
-            <Link key={href} href={href}
+    <>
+      {/* Overlay do Drawer */}
+      {menuAberto && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm transition-opacity duration-300 md:hidden"
+          onClick={() => setMenuAberto(false)}
+        />
+      )}
+
+      {/* Drawer (Gaveta de Mais Opções) */}
+      <div
+        className={clsx(
+          "fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-slate-950 rounded-t-3xl border-t border-slate-200 dark:border-slate-800 p-6 pb-10 transition-transform duration-300 ease-out transform md:hidden shadow-2xl",
+          menuAberto ? "translate-y-0" : "translate-y-full"
+        )}
+        style={{ paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Mais Opções</h3>
+            <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-0.5 leading-none">Acesse outras áreas do sistema</p>
+          </div>
+          <button
+            onClick={() => setMenuAberto(false)}
+            className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800/80 text-slate-500 dark:text-slate-400 rounded-full transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Grid de itens adicionais */}
+        <div className="grid grid-cols-3 gap-3">
+          {itensAdicionais.map(({ name, href, icon: Icon }) => {
+            const active = pathname === href;
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMenuAberto(false)}
+                className={clsx(
+                  "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center gap-2",
+                  active
+                    ? "bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400 font-semibold scale-[0.98]"
+                    : "bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/40 dark:hover:bg-slate-900/90 border-slate-100 dark:border-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                )}
+              >
+                <div className={clsx(
+                  "p-2 rounded-xl transition-all duration-200",
+                  active ? "bg-blue-500/15" : "bg-white dark:bg-slate-950 shadow-sm border border-slate-200/40 dark:border-slate-800"
+                )}>
+                  <Icon size={18} className={active ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400"} />
+                </div>
+                <span className="text-[10px] font-semibold leading-tight">
+                  {name}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Barra principal inferior */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 transition-colors"
+        role="navigation"
+        aria-label="Menu mobile"
+      >
+        <div className="flex items-stretch justify-around" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          {itensPrincipais.map(({ name, href, icon: Icon }) => {
+            const active = pathname === href;
+            return (
+              <Link key={href} href={href}
+                className={clsx(
+                  'flex flex-col items-center justify-center gap-1 py-2 flex-1 min-h-[58px] transition-all duration-200 relative',
+                  active ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-600 active:text-slate-600 dark:active:text-slate-300'
+                )}
+                aria-current={active ? 'page' : undefined}
+                aria-label={name}
+              >
+                {active && (
+                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-blue-500 rounded-b-full animate-nav-pill" />
+                )}
+                <div className={clsx(
+                  'p-1.5 rounded-xl transition-all duration-200',
+                  active && 'bg-blue-500/10 dark:bg-blue-500/15 scale-110'
+                )}>
+                  <Icon size={21} />
+                </div>
+                <span className={clsx(
+                  'text-[10px] font-semibold transition-colors',
+                  active ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-600'
+                )}>
+                  {name}
+                </span>
+              </Link>
+            );
+          })}
+
+          {/* Botão de Mais Opções */}
+          {temMais && (
+            <button
+              onClick={() => setMenuAberto(true)}
               className={clsx(
                 'flex flex-col items-center justify-center gap-1 py-2 flex-1 min-h-[58px] transition-all duration-200 relative',
-                active ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-600 active:text-slate-600 dark:active:text-slate-300'
+                menuAberto ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-600 active:text-slate-600 dark:active:text-slate-300'
               )}
-              aria-current={active ? 'page' : undefined}
-              aria-label={name}
+              aria-label="Mais Opções"
             >
-              {active && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-blue-500 rounded-b-full animate-nav-pill" />
-              )}
               <div className={clsx(
                 'p-1.5 rounded-xl transition-all duration-200',
-                active && 'bg-blue-500/10 dark:bg-blue-500/15 scale-110'
+                menuAberto && 'bg-blue-500/10 dark:bg-blue-500/15 scale-110'
               )}>
-                <Icon size={21} />
+                <Menu size={21} />
               </div>
               <span className={clsx(
                 'text-[10px] font-semibold transition-colors',
-                active ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-600'
+                menuAberto ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-600'
               )}>
-                {name}
+                Menu
               </span>
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
+            </button>
+          )}
+        </div>
+      </nav>
+    </>
   );
 }
