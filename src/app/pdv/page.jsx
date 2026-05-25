@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, memo } from 'react';
+import { useState, useCallback, useMemo, memo, useEffect } from 'react';
 import { db, addToSyncQueue } from '@/lib/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
@@ -71,6 +71,75 @@ export default function PDVPage() {
   const [buscaProduto, setBuscaProduto] = useState('');
   const [modalCadastro, setModalCadastro] = useState(false);
   const [cadastroPayIdx, setCadastroPayIdx] = useState(null);
+  const [isCleaning, setIsCleaning] = useState(false);
+
+  // ── Cleanup de comandas duplicadas/órfãs ───────────────────────────────────
+  useEffect(() => {
+    async function cleanupDuplicados() {
+      try {
+        setIsCleaning(true);
+        const todasAbertas = await db.comandas
+          .where('status')
+          .anyOf(['aberta', 'faturando'])
+          .toArray();
+
+        // Agrupar por mesa
+        const porMesa = {};
+        todasAbertas.forEach(c => {
+          if (!porMesa[c.mesa]) porMesa[c.mesa] = [];
+          porMesa[c.mesa].push(c);
+        });
+
+        // Para cada mesa com mais de uma comanda aberta, resolver duplicados
+        for (const [mesaStr, lista] of Object.entries(porMesa)) {
+          if (lista.length <= 1) continue;
+
+          console.warn(`[PDV Cleanup] Detectadas ${lista.length} comandas abertas para a mesa ${mesaStr}. Limpando...`);
+
+          // Ordenar: as com mais itens primeiro, depois por aberta_em decrescente
+          lista.sort((a, b) => {
+            const qtdeA = (a.itens || []).reduce((sum, i) => sum + i.qtde, 0);
+            const qtdeB = (b.itens || []).reduce((sum, i) => sum + i.qtde, 0);
+            if (qtdeA !== qtdeB) return qtdeB - qtdeA; // Mais itens primeiro
+            return new Date(b.aberta_em).getTime() - new Date(a.aberta_em).getTime(); // Mais recente primeiro
+          });
+
+          // A primeira é a que mantemos ativa
+          const manter = lista[0];
+
+          // O resto marcamos como 'concluida' ou deletamos se vazias
+          for (let i = 1; i < lista.length; i++) {
+            const comandaObsoleta = lista[i];
+            const temItens = (comandaObsoleta.itens || []).length > 0;
+
+            if (temItens) {
+              // Se tinha itens, fecha como concluída para segurança de auditoria
+              const resolvida = {
+                ...comandaObsoleta,
+                status: 'concluida',
+                concluida_em: new Date().toISOString(),
+                cancelada: true, // flag informativa
+              };
+              await db.comandas.put(resolvida);
+              await addToSyncQueue('comandas', 'UPDATE', resolvida);
+              console.log(`[PDV Cleanup] Comanda duplicada ${comandaObsoleta.id} com itens fechada.`);
+            } else {
+              // Se vazia, apenas deleta do banco local e avisa sync
+              await db.comandas.delete(comandaObsoleta.id);
+              await addToSyncQueue('comandas', 'DELETE', { id: comandaObsoleta.id });
+              console.log(`[PDV Cleanup] Comanda duplicada vazia ${comandaObsoleta.id} deletada.`);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[PDV Cleanup] Erro no cleanup de duplicados:', err);
+      } finally {
+        setIsCleaning(false);
+      }
+    }
+
+    cleanupDuplicados();
+  }, []);
 
   // ── Mapa mesa → comanda ────────────────────────────────────────────────────
   const comandasMap = useMemo(() => {
@@ -81,12 +150,20 @@ export default function PDVPage() {
 
   const comandaAtual = mesaAtual !== null ? comandasMap[mesaAtual] : null;
 
-  // ── Abrir Mesa ─────────────────────────────────────────────────────────────
   const handleOpenMesa = useCallback(async (num, comanda) => {
-    if (comanda) {
+    // ── Evitar race condition de carregamento lento do Dexie: consulta direta no banco
+    const existente = await db.comandas
+      .where('mesa')
+      .equals(num)
+      .filter(c => c.status === 'aberta' || c.status === 'faturando')
+      .first();
+
+    const activeComanda = existente || comanda;
+
+    if (activeComanda) {
       // Mesa já tem comanda — abrir
       setMesaAtual(num);
-      if (comanda.status === 'faturando') {
+      if (activeComanda.status === 'faturando') {
         setView('checkout');
       } else {
         setView('comanda');
@@ -111,10 +188,14 @@ export default function PDVPage() {
     }
   }, []);
 
-  // ── Venda Balcão (sem mesa, cliente final) ─────────────────────────────────
   const handleVendaBalcao = useCallback(async () => {
-    // Verifica se já existe uma comanda balcão aberta
-    const existente = comandasAbertas.find(c => c.mesa === 0);
+    // ── Evitar race condition de carregamento lento do Dexie: consulta direta no banco
+    const existente = await db.comandas
+      .where('mesa')
+      .equals(0)
+      .filter(c => c.status === 'aberta' || c.status === 'faturando')
+      .first();
+
     if (existente) {
       setMesaAtual(0);
       if (existente.status === 'faturando') {
@@ -140,7 +221,7 @@ export default function PDVPage() {
     await addToSyncQueue('comandas', 'INSERT', nova);
     setMesaAtual(0);
     setView('comanda');
-  }, [comandasAbertas]);
+  }, []);
 
   // ── Add item à comanda ─────────────────────────────────────────────────────
   const handleAddItem = useCallback(async (produto) => {
