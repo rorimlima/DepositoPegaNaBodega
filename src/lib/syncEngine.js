@@ -19,10 +19,12 @@ const FIELD_MAPS = {
     endereco:   'endereco',
     logoBase64: 'logoBase64',
   },
-  clientes:  null,
-  vendas:    null,
-  usuarios:  null,
-  comandas:  null,
+  clientes:            null,
+  vendas:              null,
+  usuarios:            null,
+  comandas:            null,
+  fechamentos_caixa:   null,
+  movimentacoes_caixa: null,
 };
 
 function mapPayload(table, data) {
@@ -103,10 +105,12 @@ export async function syncData() {
 
 // ── PULL: Supabase → Local ───────────────────────────────────────────────────
 const PULL_TABLES = [
-  { table: 'produtos',  dexieStore: 'produtos' },
-  { table: 'clientes',  dexieStore: 'clientes' },
-  { table: 'empresa',   dexieStore: 'empresa' },
-  { table: 'usuarios',  dexieStore: 'usuarios' },
+  { table: 'produtos',           dexieStore: 'produtos' },
+  { table: 'clientes',           dexieStore: 'clientes' },
+  { table: 'empresa',            dexieStore: 'empresa' },
+  { table: 'usuarios',           dexieStore: 'usuarios' },
+  { table: 'fechamentos_caixa',  dexieStore: 'fechamentos_caixa' },
+  { table: 'movimentacoes_caixa', dexieStore: 'movimentacoes_caixa' },
 ];
 
 function normalizeNumericFields(row) {

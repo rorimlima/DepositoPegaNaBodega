@@ -202,28 +202,115 @@ export default function VendasPage() {
   }, []);
 
   const handlePrint = useCallback((v) => {
-    const doc = new jsPDF('p', 'mm', [80, 297]);
-    const co = empresa[0] || { nome: 'SDO', cnpj: '' };
-    doc.setFontSize(14); doc.text(co.nome, 40, 10, { align: 'center' });
-    doc.setFontSize(9);
-    if (co.cnpj) doc.text(`CNPJ: ${co.cnpj}`, 40, 15, { align: 'center' });
-    doc.text('CUPOM NÃO FISCAL', 40, 22, { align: 'center' });
-    doc.text(`Cód: ${v.codigo || v.id.substring(0, 8)}`, 40, 27, { align: 'center' });
-    doc.text(new Date(v.data_venda).toLocaleString('pt-BR'), 40, 32, { align: 'center' });
-    let y = 39;
-    (v.itens || []).forEach(it => {
-      const total = ((it.preco_centavos * it.qtde) / 100).toFixed(2);
-      doc.text(`${it.qtde}x ${it.nome.substring(0, 16)}  R$ ${total}`, 4, y);
-      y += 5;
+    const co = empresa[0] || { nome: 'SDO', cnpj: '', telefone: '', endereco: '' };
+    const itens = v.itens || [];
+    const pagamentos = v.pagamentos || [];
+
+    // ── Kapbom KA-1445: papel 58mm, área útil ~48mm ──
+    const W = 58;          // largura do papel em mm
+    const CX = W / 2;      // centro X = 29mm
+    const ML = 2;           // margem esquerda
+    const MR = W - 2;       // margem direita
+    const SEP = '-'.repeat(32);
+
+    // Calcular altura dinâmica
+    const baseH = 90;
+    const itensH = itens.length * 8;
+    const pagsH = pagamentos.length * 5;
+    const totalH = baseH + itensH + pagsH;
+
+    const doc = new jsPDF('p', 'mm', [W, totalH]);
+    let y = 6;
+
+    // ── Cabeçalho: Empresa ──
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(co.nome, CX, y, { align: 'center' }); y += 4;
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    if (co.cnpj) { doc.text(`CNPJ: ${co.cnpj}`, CX, y, { align: 'center' }); y += 3; }
+    if (co.endereco) { doc.text(co.endereco, CX, y, { align: 'center', maxWidth: W - 6 }); y += 3; }
+    if (co.telefone) { doc.text(`Tel: ${co.telefone}`, CX, y, { align: 'center' }); y += 3; }
+
+    // ── Separador ──
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 3;
+
+    // ── Título ──
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CUPOM NÃO FISCAL', CX, y, { align: 'center' }); y += 4;
+
+    // ── Info da venda ──
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Cod: ${v.codigo || v.id.substring(0, 8)}`, ML, y); y += 3;
+    doc.text(`Data: ${new Date(v.data_venda).toLocaleString('pt-BR')}`, ML, y); y += 3;
+
+    // ── Separador ──
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 3;
+
+    // ── Cabeçalho dos itens ──
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ITEM', ML, y);
+    doc.text('QTD', 30, y, { align: 'center' });
+    doc.text('VALOR', MR, y, { align: 'right' }); y += 3;
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 3;
+
+    // ── Itens ──
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    itens.forEach(it => {
+      const totalItem = ((it.preco_centavos * it.qtde) / 100).toFixed(2);
+      const nome = it.nome.length > 18 ? it.nome.substring(0, 18) + '.' : it.nome;
+      doc.text(nome, ML, y);
+      doc.text(`${it.qtde}`, 30, y, { align: 'center' });
+      doc.text(`R$ ${totalItem}`, MR, y, { align: 'right' }); y += 4;
+      // Preço unitário
+      doc.setFontSize(5);
+      doc.setTextColor(120);
+      doc.text(`  un: R$ ${(it.preco_centavos / 100).toFixed(2)}`, ML, y); y += 4;
+      doc.setFontSize(6);
+      doc.setTextColor(0);
     });
-    y += 3;
-    doc.setFontSize(12);
-    doc.text(`TOTAL: ${fmt(v.total_centavos)}`, 40, y, { align: 'center' });
-    y += 7;
-    doc.setFontSize(9);
-    (v.pagamentos || []).forEach(p => {
-      doc.text(`${p.metodo}: R$ ${parseFloat(p.valor || 0).toFixed(2)}`, 4, y); y += 5;
+
+    // ── Separador ──
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 4;
+
+    // ── Total ──
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`TOTAL: ${fmt(v.total_centavos)}`, CX, y, { align: 'center' }); y += 5;
+
+    // ── Separador ──
+    doc.setFontSize(5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(SEP, CX, y, { align: 'center' }); y += 3;
+
+    // ── Pagamentos ──
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PAGAMENTO', ML, y); y += 3;
+    doc.setFont('helvetica', 'normal');
+    pagamentos.forEach(p => {
+      doc.text(p.metodo, ML, y);
+      doc.text(`R$ ${parseFloat(p.valor || 0).toFixed(2)}`, MR, y, { align: 'right' }); y += 4;
     });
+
+    // ── Separador ──
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 4;
+
+    // ── Rodapé ──
+    doc.setFontSize(6);
+    doc.text('Obrigado pela preferência!', CX, y, { align: 'center' }); y += 3;
+    doc.setFontSize(5);
+    doc.text(`Emitido: ${new Date().toLocaleString('pt-BR')}`, CX, y, { align: 'center' });
+
     doc.save(`cupom_${v.codigo || v.id.substring(0, 8)}.pdf`);
   }, [empresa]);
 
