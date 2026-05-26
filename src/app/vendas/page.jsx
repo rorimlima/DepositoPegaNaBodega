@@ -311,7 +311,58 @@ export default function VendasPage() {
     doc.setFontSize(5);
     doc.text(`Emitido: ${new Date().toLocaleString('pt-BR')}`, CX, y, { align: 'center' });
 
+    // ── 1. Salvar PDF (backup / download) ──
     doc.save(`cupom_${v.codigo || v.id.substring(0, 8)}.pdf`);
+
+    // ── 2. Impressão automática via iframe oculto ──
+    try {
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+
+      // Remover iframe antigo se existir
+      const oldFrame = document.getElementById('print-cupom-frame');
+      if (oldFrame) oldFrame.remove();
+
+      const iframe = document.createElement('iframe');
+      iframe.id = 'print-cupom-frame';
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;';
+      iframe.src = pdfUrl;
+      document.body.appendChild(iframe);
+
+      iframe.onload = () => {
+        try {
+          // Injetar CSS de impressão configurado para Kapbom KA-1445 (58mm)
+          const style = iframe.contentDocument.createElement('style');
+          style.textContent = `
+            @page {
+              size: 58mm ${totalH}mm;
+              margin: 0;
+            }
+            @media print {
+              body { margin: 0; padding: 0; }
+            }
+          `;
+          iframe.contentDocument.head.appendChild(style);
+
+          // Disparar impressão automática
+          setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+            // Limpar após impressão (timeout para dar tempo ao diálogo)
+            setTimeout(() => {
+              URL.revokeObjectURL(pdfUrl);
+              iframe.remove();
+            }, 5000);
+          }, 300);
+        } catch (printErr) {
+          console.warn('[Vendas] Erro ao imprimir via iframe, usando fallback:', printErr);
+          // Fallback: abrir em nova aba para impressão manual
+          window.open(pdfUrl, '_blank');
+        }
+      };
+    } catch (err) {
+      console.warn('[Vendas] Erro na impressão automática:', err);
+    }
   }, [empresa]);
 
   const handleExportAll = useCallback(() => {
