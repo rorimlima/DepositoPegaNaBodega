@@ -2,6 +2,8 @@ appId: com.depositopeganabodega.app
 productName: Deposito Pega na Bodega
 copyright: Copyright © 2024-2026
 
+asar: false
+
 directories:
   output: dist
   buildResources: build
@@ -13,16 +15,7 @@ files:
   - "electron/**/*"
   - "package.json"
   - "next.config.mjs"
-
-extraResources:
-  - from: ".next/static"
-    to: "app/.next/static"
-    filter:
-      - "**/*"
-  - from: "public"
-    to: "app/public"
-    filter:
-      - "**/*"
+  - ".env.local"
 
 win:
   target:

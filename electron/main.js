@@ -2,11 +2,18 @@ const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
+const fs = require('fs');
 
 let mainWindow;
 let serverProcess;
 
 const PORT = 3847;
+
+function getAppRoot() {
+  // Em produção empacotada: app.getAppPath() = resources/app/
+  // Em desenvolvimento: __dirname = electron/ → pai = raiz do projeto
+  return app.isPackaged ? app.getAppPath() : path.join(__dirname, '..');
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -16,8 +23,8 @@ function createWindow() {
     minHeight: 600,
     title: 'Depósito Pega na Bodega',
     autoHideMenuBar: true,
-    show: false, // Mostrar somente quando carregado
-    backgroundColor: '#020617', // slate-950 para evitar flash branco
+    show: false,
+    backgroundColor: '#020617',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -25,7 +32,6 @@ function createWindow() {
     },
   });
 
-  // Abrir links externos no navegador padrão
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http')) {
       shell.openExternal(url);
@@ -34,7 +40,6 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  // Mostrar janela quando o conteúdo estiver pronto
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
@@ -42,8 +47,7 @@ function createWindow() {
 
   const appUrl = `http://localhost:${PORT}`;
 
-  // Aguardar o servidor Next.js ficar pronto
-  const waitForServer = (retries = 120) => {
+  const waitForServer = (retries = 150) => {
     return new Promise((resolve, reject) => {
       const check = (attempt) => {
         http.get(appUrl, (res) => {
@@ -83,19 +87,27 @@ function createWindow() {
 }
 
 function startNextServer() {
-  // Em produção empacotada, usar o standalone server.js
-  // Em desenvolvimento, usar next start
-  const appDir = path.join(__dirname, '..');
-  const standaloneServer = path.join(appDir, '.next', 'standalone', 'server.js');
-  const fs = require('fs');
+  const appRoot = getAppRoot();
+  const standaloneServer = path.join(appRoot, '.next', 'standalone', 'server.js');
+
+  console.log('[Electron] App root:', appRoot);
+  console.log('[Electron] Standalone path:', standaloneServer);
+  console.log('[Electron] Exists:', fs.existsSync(standaloneServer));
+  console.log('[Electron] Is packaged:', app.isPackaged);
 
   if (fs.existsSync(standaloneServer)) {
-    // ── Modo Standalone (produção empacotada) ──
+    // ── Modo Standalone (produção) ──
     console.log('[Electron] Iniciando servidor standalone...');
     
-    // O standalone precisa das pastas public e .next/static copiadas
-    const standaloneDir = path.join(appDir, '.next', 'standalone');
-    
+    const standaloneDir = path.join(appRoot, '.next', 'standalone');
+
+    // Copiar .env.local para standalone se existir na raiz
+    const envSource = path.join(appRoot, '.env.local');
+    const envDest = path.join(standaloneDir, '.env.local');
+    if (fs.existsSync(envSource) && !fs.existsSync(envDest)) {
+      try { fs.copyFileSync(envSource, envDest); } catch (e) { console.warn('[Electron] Não foi possível copiar .env.local:', e.message); }
+    }
+
     serverProcess = spawn(process.execPath, [standaloneServer], {
       cwd: standaloneDir,
       env: {
@@ -109,10 +121,10 @@ function startNextServer() {
   } else {
     // ── Fallback: usar next start (dev/teste local) ──
     console.log('[Electron] Standalone não encontrado, usando next start...');
-    const nextPath = path.join(appDir, 'node_modules', '.bin', process.platform === 'win32' ? 'next.cmd' : 'next');
+    const nextPath = path.join(appRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'next.cmd' : 'next');
 
     serverProcess = spawn(nextPath, ['start', '--port', String(PORT)], {
-      cwd: appDir,
+      cwd: appRoot,
       env: { ...process.env, NODE_ENV: 'production' },
       shell: true,
       stdio: ['ignore', 'pipe', 'pipe'],

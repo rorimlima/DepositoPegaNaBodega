@@ -397,9 +397,9 @@ export default function PDVPage() {
 
     // ── Pré-calcular quebra de linhas do nome da empresa ──
     const tmpDoc = new jsPDF('p', 'mm', [W, 100]);
-    tmpDoc.setFontSize(11);
+    tmpDoc.setFontSize(9);
     tmpDoc.setFont('helvetica', 'bold');
-    const nomeMaxWidth = W - 6; // 52mm de largura útil
+    const nomeMaxWidth = 42; // área imprimível real ~48mm, com margem de segurança
     const nomeLines = tmpDoc.splitTextToSize(co.nome, nomeMaxWidth);
     const nomeExtraH = Math.max(0, (nomeLines.length - 1) * 4); // 4mm por linha extra
 
@@ -413,7 +413,7 @@ export default function PDVPage() {
     let y = 6;
 
     // ── Cabeçalho: Empresa (com quebra de linha automática) ──
-    doc.setFontSize(11);
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     nomeLines.forEach((line) => {
       doc.text(line, CX, y, { align: 'center' });

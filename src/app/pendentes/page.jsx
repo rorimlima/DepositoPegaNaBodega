@@ -476,9 +476,9 @@ export default function PendentesPage() {
 
     // Pré-calcular quebra de linhas do nome da empresa
     const tmpDoc = new jsPDF('p', 'mm', [W, 100]);
-    tmpDoc.setFontSize(11);
+    tmpDoc.setFontSize(9);
     tmpDoc.setFont('helvetica', 'bold');
-    const nomeMaxWidth = W - 6;
+    const nomeMaxWidth = 42;
     const nomeLines = tmpDoc.splitTextToSize(co.nome, nomeMaxWidth);
     const nomeExtraH = Math.max(0, (nomeLines.length - 1) * 4);
 
@@ -491,7 +491,7 @@ export default function PendentesPage() {
     let y = 6;
 
     // Cabeçalho com quebra de linha
-    doc.setFontSize(11);
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     nomeLines.forEach((line) => {
       doc.text(line, CX, y, { align: 'center' });
