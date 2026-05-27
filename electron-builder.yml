@@ -3,6 +3,7 @@ productName: Deposito Pega na Bodega
 copyright: Copyright © 2024-2026
 
 asar: false
+forceCodeSigning: false
 
 directories:
   output: dist
@@ -22,6 +23,8 @@ win:
     - target: nsis
       arch:
         - x64
+  signAndEditExecutable: false
+  forceCodeSigning: false
 
 nsis:
   oneClick: false
