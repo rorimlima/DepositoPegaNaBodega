@@ -584,6 +584,7 @@ export default function PDVPage() {
           mesa={mesaAtual}
           comanda={comandaAtual}
           clientes={clientes}
+          empresa={empresa}
           onVoltar={handleVoltarCheckout}
           onFinalize={handleFinalize}
           onOpenCadastroRapido={(payIdx) => { setCadastroPayIdx(payIdx); setModalCadastro(true); }}

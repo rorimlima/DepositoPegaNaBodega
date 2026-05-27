@@ -2,9 +2,11 @@
 import { useState, useMemo, memo, useCallback } from 'react';
 import {
   X, Plus, ArrowLeft, Receipt, DollarSign, CreditCard,
-  Search, UserPlus, User as UserIcon, AlertTriangle, CheckCircle2,
+  Search, UserPlus, User as UserIcon, AlertTriangle, CheckCircle2, Printer,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
 // ── Helpers centavos-safe ────────────────────────────────────────────────────
 const fmtBRL = (centavos) => `R$ ${(centavos / 100).toFixed(2)}`;
@@ -120,7 +122,7 @@ const ClienteModal = memo(function ClienteModal({ clientes, onSelect, onClose, o
 
 // ── CHECKOUT VIEW ────────────────────────────────────────────────────────────
 export default memo(function CheckoutView({
-  mesa, comanda, clientes,
+  mesa, comanda, clientes, empresa,
   onVoltar, onFinalize,
   onOpenCadastroRapido,
 }) {
@@ -210,6 +212,124 @@ export default memo(function CheckoutView({
       troco: troco / 100,
     });
   };
+
+  // ── Imprimir Cupom Parcial (conta atual sem fechar) ─────────────────────
+  const handlePrintParcial = useCallback(() => {
+    const co = (empresa && empresa[0]) || { nome: 'SDO', cnpj: '', telefone: '', endereco: '' };
+
+    const W = 58;
+    const CX = W / 2;
+    const ML = 2;
+    const MR = W - 2;
+    const SEP = '-'.repeat(32);
+
+    // Pré-calcular quebra de linhas do nome da empresa
+    const tmpDoc = new jsPDF('p', 'mm', [W, 100]);
+    tmpDoc.setFontSize(9);
+    tmpDoc.setFont('helvetica', 'bold');
+    const nomeMaxWidth = 42;
+    const nomeLines = tmpDoc.splitTextToSize(co.nome, nomeMaxWidth);
+    const nomeExtraH = Math.max(0, (nomeLines.length - 1) * 4);
+
+    const baseH = 80;
+    const itensH = itens.length * 8;
+    const totalH = baseH + itensH + nomeExtraH;
+
+    const doc = new jsPDF('p', 'mm', [W, totalH]);
+    let y = 6;
+
+    // Cabeçalho empresa
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    nomeLines.forEach((line) => {
+      doc.text(line, CX, y, { align: 'center' });
+      y += 4;
+    });
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    if (co.cnpj) { doc.text(`CNPJ: ${co.cnpj}`, CX, y, { align: 'center' }); y += 3; }
+    if (co.telefone) { doc.text(`Tel: ${co.telefone}`, CX, y, { align: 'center' }); y += 3; }
+
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 3;
+
+    // Título
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CONTA PARCIAL', CX, y, { align: 'center' }); y += 4;
+
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    const mesaTexto = mesa === 0 ? 'Balcão' : `Mesa ${String(mesa).padStart(2, '0')}`;
+    doc.text(`Origem: ${mesaTexto}`, ML, y); y += 3;
+    if (clienteAtual) { doc.text(`Cliente: ${clienteAtual.nome}`, ML, y); y += 3; }
+    doc.text(`Data: ${new Date().toLocaleString('pt-BR')}`, ML, y); y += 3;
+
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 3;
+
+    // Cabeçalho itens
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ITEM', ML, y);
+    doc.text('QTD', 30, y, { align: 'center' });
+    doc.text('VALOR', MR, y, { align: 'right' }); y += 3;
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 3;
+
+    // Itens
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    itens.forEach(it => {
+      const totalItem = ((it.preco_centavos * it.qtde) / 100).toFixed(2);
+      const nome = it.nome.length > 18 ? it.nome.substring(0, 18) + '.' : it.nome;
+      doc.text(nome, ML, y);
+      doc.text(`${it.qtde}`, 30, y, { align: 'center' });
+      doc.text(`R$ ${totalItem}`, MR, y, { align: 'right' }); y += 4;
+      doc.setFontSize(5);
+      doc.setTextColor(120);
+      doc.text(`  un: R$ ${(it.preco_centavos / 100).toFixed(2)}`, ML, y); y += 4;
+      doc.setFontSize(6);
+      doc.setTextColor(0);
+    });
+
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 4;
+
+    // Total
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`TOTAL: ${fmtBRL(totalCentavos)}`, CX, y, { align: 'center' }); y += 5;
+
+    doc.setFontSize(5);
+    doc.text(SEP, CX, y, { align: 'center' }); y += 4;
+
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.text('** Conta parcial - consumo até o momento **', CX, y, { align: 'center' }); y += 3;
+    doc.setFontSize(5);
+    doc.text(`Emitido: ${new Date().toLocaleString('pt-BR')}`, CX, y, { align: 'center' });
+
+    // Preview
+    try {
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      const previewWin = window.open(pdfUrl, '_blank');
+      if (previewWin) {
+        previewWin.addEventListener('load', () => {
+          setTimeout(() => { previewWin.focus(); previewWin.print(); }, 500);
+        });
+        const checkClosed = setInterval(() => {
+          if (previewWin.closed) { clearInterval(checkClosed); URL.revokeObjectURL(pdfUrl); }
+        }, 1000);
+      } else {
+        doc.save(`conta_parcial_mesa_${mesa}.pdf`);
+      }
+    } catch (err) {
+      console.warn('[CheckoutView] Erro ao abrir preview:', err);
+      doc.save(`conta_parcial_mesa_${mesa}.pdf`);
+    }
+  }, [itens, totalCentavos, mesa, empresa, clienteAtual]);
 
   return (
     <div className="flex flex-col h-full">
@@ -307,7 +427,11 @@ export default memo(function CheckoutView({
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
+      <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0 space-y-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
+        <button onClick={handlePrintParcial}
+          className="w-full h-11 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 font-bold text-sm flex items-center justify-center gap-2 active:bg-slate-700 transition-all">
+          <Printer size={16} /> Imprimir Conta Parcial
+        </button>
         <button onClick={handleFinalize} disabled={!podeFinalizar}
           className="w-full h-14 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-bold text-base flex items-center justify-center gap-2 active:opacity-80 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/30">
           <CheckCircle2 size={20} /> Finalizar Venda {troco > 0 && `(Troco: ${fmtBRL(troco)})`}
