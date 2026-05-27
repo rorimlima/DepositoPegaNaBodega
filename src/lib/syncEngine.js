@@ -117,6 +117,8 @@ const PULL_TABLES = [
   { table: 'clientes',           dexieStore: 'clientes' },
   { table: 'empresa',            dexieStore: 'empresa' },
   { table: 'usuarios',           dexieStore: 'usuarios' },
+  { table: 'vendas',             dexieStore: 'vendas' },
+  { table: 'comandas',           dexieStore: 'comandas' },
   { table: 'fechamentos_caixa',  dexieStore: 'fechamentos_caixa' },
   { table: 'movimentacoes_caixa', dexieStore: 'movimentacoes_caixa' },
 ];
@@ -141,7 +143,7 @@ export async function pullFromSupabase() {
   for (const { table, dexieStore } of PULL_TABLES) {
     try {
       let query = supabase.from(table).select('*');
-      if (['produtos', 'clientes', 'empresa', 'vendas', 'usuarios'].includes(table)) {
+      if (['produtos', 'clientes', 'empresa', 'vendas', 'usuarios', 'comandas'].includes(table)) {
         query = query.eq('is_deleted', false);
       }
 

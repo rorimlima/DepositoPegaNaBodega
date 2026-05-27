@@ -9,6 +9,7 @@ import {
   Eye, Edit, Trash2, Printer, FileDown, Search, X,
   ShoppingCart, Calendar, DollarSign, Filter
 } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
 
 const fmt = (c) => `R$ ${((c || 0) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
@@ -23,10 +24,15 @@ const VendaModal = memo(function VendaModal({ venda, clientes, empresa, mode, on
   };
 
   const handleSave = async () => {
-    const updated = { ...venda, pagamentos };
-    await db.vendas.put(updated);
-    await addToSyncQueue('vendas', 'UPDATE', updated);
-    onSave?.();
+    try {
+      const updated = { ...venda, pagamentos };
+      await db.vendas.put(updated);
+      await addToSyncQueue('vendas', 'UPDATE', updated);
+      onSave?.();
+    } catch (err) {
+      console.error('[Vendas] Erro ao salvar:', err);
+      alert('Erro ao salvar alterações. Tente novamente.');
+    }
   };
 
   if (!venda) return null;
@@ -171,6 +177,7 @@ export default function VendasPage() {
   const vendas   = useLiveQuery(() => db?.vendas?.toArray() || [], []) || [];
   const clientes = useLiveQuery(() => db?.clientes?.toArray() || [], []) || [];
   const empresa  = useLiveQuery(() => db?.empresa?.toArray()  || [], []) || [];
+  const toast = useToast();
 
   const [busca, setBusca]       = useState('');
   const [modal, setModal]       = useState(null); // { venda, mode: 'view' | 'edit' }
@@ -197,9 +204,15 @@ export default function VendasPage() {
 
   const handleDelete = useCallback(async (v) => {
     if (!confirm(`Excluir venda ${v.codigo || v.id.substring(0, 8)}?`)) return;
-    await db.vendas.delete(v.id);
-    await addToSyncQueue('vendas', 'DELETE', { id: v.id });
-  }, []);
+    try {
+      await db.vendas.delete(v.id);
+      await addToSyncQueue('vendas', 'DELETE', { id: v.id });
+      toast.success('Venda excluída.');
+    } catch (err) {
+      console.error('[Vendas] Erro ao excluir:', err);
+      toast.error('Erro ao excluir venda.');
+    }
+  }, [toast]);
 
   const handlePrint = useCallback((v) => {
     const co = empresa[0] || { nome: 'SDO', cnpj: '', telefone: '', endereco: '' };

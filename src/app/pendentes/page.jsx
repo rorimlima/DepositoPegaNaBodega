@@ -11,6 +11,7 @@ import {
   ClipboardList, Calendar, DollarSign, AlertTriangle,
   Clock, UserPlus, User as UserIcon, Filter, Plus,
 } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
 
 const fmt = (c) => `R$ ${((c || 0) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 const toCentavos = (v) => Math.round(parseFloat(v || 0) * 100);
@@ -91,14 +92,19 @@ const PendenteModal = memo(function PendenteModal({ venda, clientes, empresa, mo
   };
 
   const handleSave = async () => {
-    const totalPagoAtualizado = pagamentos.reduce((a, p) => a + toCentavos(p.valor), 0);
-    const novoStatus = totalPagoAtualizado >= totalVenda &&
-      !pagamentos.some(p => p.metodo === 'Fiado') ? 'finalizada' : venda.status;
+    try {
+      const totalPagoAtualizado = pagamentos.reduce((a, p) => a + toCentavos(p.valor), 0);
+      const novoStatus = totalPagoAtualizado >= totalVenda &&
+        !pagamentos.some(p => p.metodo === 'Fiado') ? 'finalizada' : venda.status;
 
-    const updated = { ...venda, pagamentos, status: novoStatus };
-    await db.vendas.put(updated);
-    await addToSyncQueue('vendas', 'UPDATE', updated);
-    onSave?.();
+      const updated = { ...venda, pagamentos, status: novoStatus };
+      await db.vendas.put(updated);
+      await addToSyncQueue('vendas', 'UPDATE', updated);
+      onSave?.();
+    } catch (err) {
+      console.error('[Pendentes] Erro ao salvar:', err);
+      alert('Erro ao salvar alterações. Tente novamente.');
+    }
   };
 
   const clientesFiltrados = useMemo(() => {
@@ -356,6 +362,7 @@ export default function PendentesPage() {
   const [modal, setModal]             = useState(null);
   const [periodoInicio, setPeriodoInicio] = useState('');
   const [periodoFim, setPeriodoFim]       = useState('');
+  const toast = useToast();
 
   const clienteMap = useMemo(() => {
     const m = {};
@@ -413,36 +420,47 @@ export default function PendentesPage() {
 
   const handleDelete = useCallback(async (v) => {
     if (!confirm(`Excluir venda pendente ${v.codigo || v.id.substring(0, 8)}?`)) return;
-    await db.vendas.delete(v.id);
-    await addToSyncQueue('vendas', 'DELETE', { id: v.id });
-  }, []);
+    try {
+      await db.vendas.delete(v.id);
+      await addToSyncQueue('vendas', 'DELETE', { id: v.id });
+      toast.success('Venda pendente excluída.');
+    } catch (err) {
+      console.error('[Pendentes] Erro ao excluir:', err);
+      toast.error('Erro ao excluir venda.');
+    }
+  }, [toast]);
 
   const handleQuitar = useCallback(async (v) => {
     if (!confirm(`Marcar venda ${v.codigo || v.id.substring(0, 8)} como quitada?`)) return;
-    const totalVenda = v.total_centavos || 0;
-    const pagamentos = v.pagamentos || [];
-    const totalPago = pagamentos.reduce((a, p) => a + toCentavos(p.valor), 0);
-    const falta = Math.max(0, totalVenda - totalPago);
+    try {
+      const totalVenda = v.total_centavos || 0;
+      const pagamentos = v.pagamentos || [];
+      const totalPago = pagamentos.reduce((a, p) => a + toCentavos(p.valor), 0);
+      const falta = Math.max(0, totalVenda - totalPago);
 
-    let novosPagamentos = [...pagamentos];
-    if (falta > 0) {
-      novosPagamentos.push({
-        metodo: 'Dinheiro',
-        valor: (falta / 100).toFixed(2),
-        data: new Date().toISOString().split('T')[0],
-        cliente_id: null,
-      });
+      let novosPagamentos = [...pagamentos];
+      if (falta > 0) {
+        novosPagamentos.push({
+          metodo: 'Dinheiro',
+          valor: (falta / 100).toFixed(2),
+          data: new Date().toISOString().split('T')[0],
+          cliente_id: null,
+        });
+      }
+
+      const updated = {
+        ...v,
+        pagamentos: novosPagamentos,
+        status: 'finalizada',
+      };
+      await db.vendas.put(updated);
+      await addToSyncQueue('vendas', 'UPDATE', updated);
+      toast.success('Venda quitada com sucesso! \u2705');
+    } catch (err) {
+      console.error('[Pendentes] Erro ao quitar:', err);
+      toast.error('Erro ao quitar venda.');
     }
-
-    // Remover flag de Fiado se tinha
-    const updated = {
-      ...v,
-      pagamentos: novosPagamentos,
-      status: 'finalizada',
-    };
-    await db.vendas.put(updated);
-    await addToSyncQueue('vendas', 'UPDATE', updated);
-  }, []);
+  }, [toast]);
 
   // ── Gerar PDF (mesmo padrão de pdv/vendas com fix do nome) ─────────────────
   const handlePrint = useCallback((v) => {

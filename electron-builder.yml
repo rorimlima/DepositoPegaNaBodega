@@ -1,0 +1,42 @@
+appId: com.depositopeganabodega.app
+productName: Deposito Pega na Bodega
+copyright: Copyright © 2024-2026
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - ".next/standalone/**/*"
+  - ".next/static/**/*"
+  - "public/**/*"
+  - "electron/**/*"
+  - "package.json"
+  - "next.config.mjs"
+
+extraResources:
+  - from: ".next/static"
+    to: "app/.next/static"
+    filter:
+      - "**/*"
+  - from: "public"
+    to: "app/public"
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Deposito Pega na Bodega
+  perMachine: true
+
+extraMetadata:
+  main: electron/main.js

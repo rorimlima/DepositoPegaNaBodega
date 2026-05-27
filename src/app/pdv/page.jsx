@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { X, UserPlus } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
 
 import MesasGrid from '@/components/pdv/MesasGrid';
 import ComandaView from '@/components/pdv/ComandaView';
@@ -72,6 +73,7 @@ export default function PDVPage() {
   const [modalCadastro, setModalCadastro] = useState(false);
   const [cadastroPayIdx, setCadastroPayIdx] = useState(null);
   const [isCleaning, setIsCleaning] = useState(false);
+  const toast = useToast();
 
   // ── Cleanup de comandas duplicadas/órfãs ───────────────────────────────────
   useEffect(() => {
@@ -314,64 +316,71 @@ export default function PDVPage() {
       p => p.metodo === 'Fiado' && !p.cliente_id && Math.round(parseFloat(p.valor || 0) * 100) > 0
     );
     if (fiadoSemCliente) {
-      console.warn('[PDV] Tentativa de finalizar com Fiado sem cliente vinculado');
+      toast.warning('Pagamento Fiado precisa de um cliente vinculado.');
       return;
     }
 
     // Só finaliza se o total pago cobre o total da compra
     const pagamentoQuitado = totalPagoCentavos >= totalCentavos;
     if (!pagamentoQuitado) {
-      console.warn(`[PDV] Pagamento insuficiente: pago=${totalPagoCentavos} total=${totalCentavos}`);
-      return; // UI já bloqueia, mas safety net
+      toast.warning('Pagamento insuficiente. Confira os valores.');
+      return;
     }
 
-    // 1. Criar venda (compatível com o sistema existente)
-    const venda = {
-      id: uuidv4(),
-      codigo: comandaAtual.codigo || gerarCodigo(),
-      cliente_id: comandaAtual.cliente_id || pagamentos.find(p => p.cliente_id)?.cliente_id || null,
-      total_centavos: totalCentavos,
-      data_venda: new Date().toISOString(),
-      pagamentos,
-      itens: itens.map(i => ({ id: i.id, nome: i.nome, preco_centavos: i.preco_centavos, qtde: i.qtde })),
-      mesa: comandaAtual.mesa,
-      comanda_id: comandaAtual.id,
-      status: 'finalizada', // venda concluída com pagamento quitado
-    };
-    await db.vendas.add(venda);
-    await addToSyncQueue('vendas', 'INSERT', venda);
+    try {
+      // 1. Criar venda (compatível com o sistema existente)
+      const venda = {
+        id: uuidv4(),
+        codigo: comandaAtual.codigo || gerarCodigo(),
+        cliente_id: comandaAtual.cliente_id || pagamentos.find(p => p.cliente_id)?.cliente_id || null,
+        total_centavos: totalCentavos,
+        data_venda: new Date().toISOString(),
+        pagamentos,
+        itens: itens.map(i => ({ id: i.id, nome: i.nome, preco_centavos: i.preco_centavos, qtde: i.qtde })),
+        mesa: comandaAtual.mesa,
+        comanda_id: comandaAtual.id,
+        status: 'finalizada',
+      };
+      await db.vendas.add(venda);
+      await addToSyncQueue('vendas', 'INSERT', venda);
 
-    // 2. Baixar estoque
-    for (const item of itens) {
-      const prod = await db.produtos.get(item.id);
-      if (prod) {
-        const nq = Math.max(0, (prod.quantidade || 0) - item.qtde);
-        await db.produtos.update(item.id, { quantidade: nq });
-        await addToSyncQueue('produtos', 'UPDATE', { ...prod, quantidade: nq });
+      // 2. Baixar estoque
+      for (const item of itens) {
+        const prod = await db.produtos.get(item.id);
+        if (prod) {
+          const nq = Math.max(0, (prod.quantidade || 0) - item.qtde);
+          await db.produtos.update(item.id, { quantidade: nq });
+          await addToSyncQueue('produtos', 'UPDATE', { ...prod, quantidade: nq });
+        }
       }
+
+      // 3. Fechar comanda
+      const concluida = {
+        ...comandaAtual,
+        status: 'concluida',
+        pagamentos,
+        concluida_em: new Date().toISOString(),
+        total_centavos: totalCentavos,
+        total_pago_centavos: totalPagoCentavos,
+        troco_centavos: Math.max(0, totalPagoCentavos - totalCentavos),
+      };
+      await db.comandas.put(concluida);
+      await addToSyncQueue('comandas', 'UPDATE', concluida);
+
+      // 4. Gerar cupom PDF
+      generatePDF(venda, troco);
+
+      toast.success('Venda finalizada com sucesso! ✅');
+
+      // 5. Voltar para mesas
+      setView('mesas');
+      setMesaAtual(null);
+      setBuscaProduto('');
+    } catch (err) {
+      console.error('[PDV] Erro ao finalizar venda:', err);
+      toast.error('Erro ao finalizar venda. Tente novamente.');
     }
-
-    // 3. Fechar comanda — SOMENTE com status 'concluida' se pagamento quitou
-    const concluida = {
-      ...comandaAtual,
-      status: 'concluida',
-      pagamentos,
-      concluida_em: new Date().toISOString(),
-      total_centavos: totalCentavos,
-      total_pago_centavos: totalPagoCentavos,
-      troco_centavos: Math.max(0, totalPagoCentavos - totalCentavos),
-    };
-    await db.comandas.put(concluida);
-    await addToSyncQueue('comandas', 'UPDATE', concluida);
-
-    // 4. Gerar cupom PDF
-    generatePDF(venda, troco);
-
-    // 5. Voltar para mesas
-    setView('mesas');
-    setMesaAtual(null);
-    setBuscaProduto('');
-  }, [comandaAtual, empresa]);
+  }, [comandaAtual, empresa, toast]);
 
   // ── Gerar PDF ──────────────────────────────────────────────────────────────
   const generatePDF = useCallback((venda, troco) => {
