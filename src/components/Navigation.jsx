@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, ShoppingCart, Users, Package,
   Settings, UserCog, Receipt, Landmark, Wallet,
-  Menu, X
+  Menu, X, ClipboardList
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import clsx from 'clsx';
@@ -16,6 +16,7 @@ const allNavItems = [
   { name: 'Dashboard',  href: '/',            icon: LayoutDashboard, roles: ['admin'] },
   { name: 'PDV',        href: '/pdv',         icon: ShoppingCart,    roles: ['admin', 'operador'] },
   { name: 'Vendas',     href: '/vendas',      icon: Receipt,         roles: ['admin'] },
+  { name: 'Pendentes',  href: '/pendentes',   icon: ClipboardList,   roles: ['admin'] },
   { name: 'Clientes',   href: '/clientes',    icon: Users,           roles: ['admin'] },
   { name: 'Produtos',   href: '/produtos',    icon: Package,         roles: ['admin'] },
   { name: 'Financeiro', href: '/financeiro',  icon: Landmark,        roles: ['admin'] },
@@ -25,7 +26,7 @@ const allNavItems = [
 ];
 
 // Itens para a bottom nav (mobile) — máximo 4 para sobrar espaço para o botão "Mais/Menu"
-const mobileNavPriority = ['/pdv', '/vendas', '/produtos', '/'];
+const mobileNavPriority = ['/pdv', '/vendas', '/pendentes', '/'];
 
 function useNavItems() {
   const { usuario } = useAuth();

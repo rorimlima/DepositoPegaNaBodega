@@ -386,19 +386,30 @@ export default function PDVPage() {
     const MR = W - 2;       // margem direita
     const SEP = '-'.repeat(32);
 
+    // ── Pré-calcular quebra de linhas do nome da empresa ──
+    const tmpDoc = new jsPDF('p', 'mm', [W, 100]);
+    tmpDoc.setFontSize(11);
+    tmpDoc.setFont('helvetica', 'bold');
+    const nomeMaxWidth = W - 6; // 52mm de largura útil
+    const nomeLines = tmpDoc.splitTextToSize(co.nome, nomeMaxWidth);
+    const nomeExtraH = Math.max(0, (nomeLines.length - 1) * 4); // 4mm por linha extra
+
     // Calcular altura dinâmica
     const baseH = 95;
     const itensH = itens.length * 8;
     const pagsH = pagamentos.length * 5;
-    const totalH = baseH + itensH + pagsH;
+    const totalH = baseH + itensH + pagsH + nomeExtraH;
 
     const doc = new jsPDF('p', 'mm', [W, totalH]);
     let y = 6;
 
-    // ── Cabeçalho: Empresa ──
+    // ── Cabeçalho: Empresa (com quebra de linha automática) ──
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(co.nome, CX, y, { align: 'center' }); y += 4;
+    nomeLines.forEach((line) => {
+      doc.text(line, CX, y, { align: 'center' });
+      y += 4;
+    });
     doc.setFontSize(6);
     doc.setFont('helvetica', 'normal');
     if (co.cnpj) { doc.text(`CNPJ: ${co.cnpj}`, CX, y, { align: 'center' }); y += 3; }
@@ -492,57 +503,35 @@ export default function PDVPage() {
     doc.setFontSize(5);
     doc.text(`Emitido: ${new Date().toLocaleString('pt-BR')}`, CX, y, { align: 'center' });
 
-    // ── 1. Salvar PDF (backup / download) ──
-    doc.save(`cupom_${venda.codigo || venda.id.substring(0, 8)}.pdf`);
-
-    // ── 2. Impressão automática via iframe oculto ──
+    // ── Abrir PDF em nova janela para preview antes de imprimir ──
     try {
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
 
-      // Remover iframe antigo se existir
-      const oldFrame = document.getElementById('print-cupom-frame');
-      if (oldFrame) oldFrame.remove();
-
-      const iframe = document.createElement('iframe');
-      iframe.id = 'print-cupom-frame';
-      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;';
-      iframe.src = pdfUrl;
-      document.body.appendChild(iframe);
-
-      iframe.onload = () => {
-        try {
-          // Injetar CSS de impressão configurado para Kapbom KA-1445 (58mm)
-          const style = iframe.contentDocument.createElement('style');
-          style.textContent = `
-            @page {
-              size: 58mm ${totalH}mm;
-              margin: 0;
-            }
-            @media print {
-              body { margin: 0; padding: 0; }
-            }
-          `;
-          iframe.contentDocument.head.appendChild(style);
-
-          // Disparar impressão automática
+      const previewWin = window.open(pdfUrl, '_blank');
+      if (previewWin) {
+        // Aguardar carregamento e abrir diálogo de impressão automaticamente
+        previewWin.addEventListener('load', () => {
           setTimeout(() => {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-            // Limpar após impressão (timeout para dar tempo ao diálogo)
-            setTimeout(() => {
-              URL.revokeObjectURL(pdfUrl);
-              iframe.remove();
-            }, 5000);
-          }, 300);
-        } catch (printErr) {
-          console.warn('[PDV] Erro ao imprimir via iframe, usando fallback:', printErr);
-          // Fallback: abrir em nova aba para impressão manual
-          window.open(pdfUrl, '_blank');
-        }
-      };
+            previewWin.focus();
+            previewWin.print();
+          }, 500);
+        });
+        // Limpar URL após fechar a janela
+        const checkClosed = setInterval(() => {
+          if (previewWin.closed) {
+            clearInterval(checkClosed);
+            URL.revokeObjectURL(pdfUrl);
+          }
+        }, 1000);
+      } else {
+        // Fallback: se popup bloqueado, salvar PDF
+        doc.save(`cupom_${venda.codigo || venda.id.substring(0, 8)}.pdf`);
+      }
     } catch (err) {
-      console.warn('[PDV] Erro na impressão automática:', err);
+      console.warn('[PDV] Erro ao abrir preview de impressão:', err);
+      // Fallback: salvar PDF
+      doc.save(`cupom_${venda.codigo || venda.id.substring(0, 8)}.pdf`);
     }
   }, [empresa]);
 
