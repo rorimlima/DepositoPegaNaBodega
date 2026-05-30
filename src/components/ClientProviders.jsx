@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { startAutoSync, fullSync } from '@/lib/syncEngine';
+import { startAutoSync, fullSync, loginSync } from '@/lib/syncEngine';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
@@ -13,6 +13,16 @@ import { DynamicTitle } from '@/components/DynamicTitle';
 // Guard interno — só renderiza children se autenticado
 function AuthGuard({ children }) {
   const { usuario, loading } = useAuth();
+
+  // Sync forçado ao autenticar — garante que dados de outros dispositivos sejam puxados
+  useEffect(() => {
+    if (usuario && !loading) {
+      console.log('[AuthGuard] 🔐 Usuário autenticado, disparando loginSync...');
+      loginSync().catch(err => {
+        console.warn('[AuthGuard] Erro no loginSync:', err);
+      });
+    }
+  }, [usuario, loading]);
 
   if (loading) {
     return (
@@ -30,7 +40,10 @@ function AuthGuard({ children }) {
 
   if (!usuario) return <LoginPage />;
 
-  return <>{children}</>;
+  return <>
+    <SyncBootstrap />
+    {children}
+  </>;
 }
 
 // SW update listener
@@ -95,7 +108,6 @@ export function ClientProviders({ children }) {
         <AuthProvider>
           <DynamicTitle />
           <ConnectionStatus />
-          <SyncBootstrap />
           <SWUpdateListener />
           <AuthGuard>{children}</AuthGuard>
           <InstallBanner />

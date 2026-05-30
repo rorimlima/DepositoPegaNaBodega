@@ -134,7 +134,7 @@ function normalizeNumericFields(row) {
   return result;
 }
 
-export async function pullFromSupabase() {
+export async function pullFromSupabase({ force = false } = {}) {
   if (typeof navigator === 'undefined' || !navigator.onLine) return { success: false, message: 'Offline' };
   if (!isSupabaseReady()) return { success: false, message: 'Supabase not configured' };
 
@@ -155,22 +155,32 @@ export async function pullFromSupabase() {
       }
       if (!data || data.length === 0) continue;
 
-      console.log(`[Pull] ${table}: ${data.length} registros recebidos`);
+      console.log(`[Pull] ${table}: ${data.length} registros recebidos${force ? ' (FORCE)' : ''}`);
 
       const store = db[dexieStore];
       if (!store) continue;
 
+      // Em modo force: coleta IDs remotos para detectar registros locais órfãos
+      const remoteIds = force ? new Set() : null;
+
       for (const rawRow of data) {
         try {
           const row = normalizeNumericFields(rawRow);
+          if (remoteIds) remoteIds.add(row.id);
+
           const existing = await store.get(row.id);
           if (!existing) {
             await store.put(row);
             totalPulled++;
+          } else if (force) {
+            // Force mode: sempre sobrescreve com dados do servidor
+            await store.put(row);
+            totalPulled++;
           } else {
+            // Modo normal: compara updated_at (com tolerância de 1s para timezone)
             const remoteUpdated = row.updated_at ? new Date(row.updated_at).getTime() : 0;
             const localUpdated = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
-            if (remoteUpdated > localUpdated) {
+            if (remoteUpdated > localUpdated || (!localUpdated && remoteUpdated)) {
               await store.put(row);
               totalPulled++;
             }
@@ -179,17 +189,40 @@ export async function pullFromSupabase() {
           console.warn(`[Pull] Erro registro ${rawRow.id} em ${table}:`, rowErr?.message);
         }
       }
+
+      // Em modo force para vendas e comandas: remove registros locais que não existem mais no servidor
+      // (ex: vendas deletadas ou comandas concluídas em outro dispositivo)
+      if (force && remoteIds && ['vendas', 'comandas'].includes(table)) {
+        try {
+          const allLocal = await store.toArray();
+          for (const local of allLocal) {
+            if (!remoteIds.has(local.id)) {
+              // Verificar se o registro local está na sync_queue antes de deletar
+              const pendingSync = await db.sync_queue
+                .where('table').equals(table)
+                .filter(q => q.data?.id === local.id)
+                .count();
+              if (pendingSync === 0) {
+                await store.delete(local.id);
+                console.log(`[Pull Force] Removido registro local órfão ${local.id} de ${table}`);
+              }
+            }
+          }
+        } catch (cleanErr) {
+          console.warn(`[Pull Force] Erro ao limpar órfãos de ${table}:`, cleanErr?.message);
+        }
+      }
     } catch (err) {
       console.warn(`[Pull] Falha em ${table}:`, err?.message);
     }
   }
 
-  console.log(`[Pull] ✅ ${totalPulled} registros sincronizados`);
+  console.log(`[Pull] ✅ ${totalPulled} registros sincronizados${force ? ' (force)' : ''}`);
   return { success: true, pulled: totalPulled };
 }
 
 // ── fullSync: Pull + Push combinados (chamado pelo Header e SyncBootstrap) ───
-export async function fullSync() {
+export async function fullSync({ force = false } = {}) {
   if (typeof navigator === 'undefined' || !navigator.onLine) return { success: false, error: 'Offline' };
   if (!isSupabaseReady()) return { success: false, error: 'Supabase not configured' };
 
@@ -198,11 +231,11 @@ export async function fullSync() {
   try {
     await db.open();
 
-    // Pull primeiro (baixar dados do servidor)
-    const pullResult = await pullFromSupabase();
-
-    // Push depois (enviar mudanças locais)
+    // Push primeiro em modo normal (enviar mudanças locais antes de puxar)
     const pushResult = await syncData();
+
+    // Pull depois (baixar dados do servidor)
+    const pullResult = await pullFromSupabase({ force });
 
     const now = new Date().toISOString();
     _notifyStatus({ isSyncing: false, lastSync: now, lastError: null });
@@ -217,6 +250,30 @@ export async function fullSync() {
     _notifyStatus({ isSyncing: false, lastError: errorMsg });
     console.error('[SyncEngine] ❌ fullSync error:', errorMsg);
     return { success: false, error: errorMsg };
+  }
+}
+
+// ── Login Sync: chamado imediatamente após autenticação ──────────────────────
+// Faz push das mudanças locais pendentes e depois pull forçado do servidor
+// para garantir que todos os dados estejam atualizados no dispositivo
+export async function loginSync() {
+  if (typeof navigator === 'undefined' || !navigator.onLine) {
+    console.log('[SyncEngine] 📴 Login sync ignorado (offline)');
+    return { success: false, error: 'Offline' };
+  }
+  if (!isSupabaseReady()) {
+    console.log('[SyncEngine] ⚠️ Login sync ignorado (Supabase não configurado)');
+    return { success: false, error: 'Supabase not configured' };
+  }
+
+  console.log('[SyncEngine] 🔐 Login sync iniciado (force pull)...');
+  try {
+    const result = await fullSync({ force: true });
+    console.log(`[SyncEngine] 🔐 Login sync concluído — ${result.pulled || 0} registros atualizados, ${result.pushed || 0} enviados`);
+    return result;
+  } catch (err) {
+    console.error('[SyncEngine] ❌ Login sync error:', err);
+    return { success: false, error: err?.message };
   }
 }
 
