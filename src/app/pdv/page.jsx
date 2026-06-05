@@ -354,10 +354,12 @@ export default function PDVPage() {
         }
       }
 
-      // 3. Fechar comanda
+      // 3. Fechar comanda — marcar como concluída E is_deleted para que o
+      //    sync não baixe de volta e não reabra a mesa em nenhum dispositivo
       const concluida = {
         ...comandaAtual,
         status: 'concluida',
+        is_deleted: true,
         pagamentos,
         concluida_em: new Date().toISOString(),
         total_centavos: totalCentavos,

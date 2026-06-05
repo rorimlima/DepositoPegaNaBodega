@@ -393,8 +393,26 @@ export default function VendasPage() {
   const handleDelete = useCallback(async (v) => {
     if (!confirm(`Excluir venda ${v.codigo || v.id.substring(0, 8)}?`)) return;
     try {
+      // 1. Excluir a venda localmente e enfileirar soft delete
       await db.vendas.delete(v.id);
       await addToSyncQueue('vendas', 'DELETE', { id: v.id });
+
+      // 2. Se a venda tem comanda associada, garantir que ela esteja marcada como
+      //    concluída e is_deleted para não reabrir a mesa no PDV
+      if (v.comanda_id) {
+        const comanda = await db.comandas.get(v.comanda_id);
+        if (comanda) {
+          const updated = {
+            ...comanda,
+            status: 'concluida',
+            is_deleted: true,
+            updated_at: new Date().toISOString(),
+          };
+          await db.comandas.put(updated);
+          await addToSyncQueue('comandas', 'UPDATE', updated);
+        }
+      }
+
       toast.success('Venda excluída.');
     } catch (err) {
       console.error('[Vendas] Erro ao excluir:', err);

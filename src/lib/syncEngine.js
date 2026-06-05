@@ -78,7 +78,11 @@ export async function syncData() {
           const { error } = await supabase.from(table).upsert(payload);
           if (error) throw error;
         } else if (action === 'DELETE') {
-          const { error } = await supabase.from(table).delete().eq('id', data.id);
+          // Soft delete: marca is_deleted=true no Supabase em vez de deletar fisicamente.
+          // Isso evita race condition onde o PULL reinsere o registro antes do DELETE ser processado.
+          const { error } = await supabase.from(table)
+            .update({ is_deleted: true, updated_at: new Date().toISOString() })
+            .eq('id', data.id);
           if (error) throw error;
         }
 
@@ -143,7 +147,8 @@ export async function pullFromSupabase({ force = false } = {}) {
   for (const { table, dexieStore } of PULL_TABLES) {
     try {
       let query = supabase.from(table).select('*');
-      if (['produtos', 'clientes', 'empresa', 'vendas', 'usuarios', 'comandas'].includes(table)) {
+      // Filtrar registros marcados como excluídos em todas as tabelas que possuem is_deleted
+      if (['produtos', 'clientes', 'empresa', 'vendas', 'usuarios', 'comandas', 'fechamentos_caixa', 'movimentacoes_caixa'].includes(table)) {
         query = query.eq('is_deleted', false);
       }
 
@@ -167,6 +172,19 @@ export async function pullFromSupabase({ force = false } = {}) {
         try {
           const row = normalizeNumericFields(rawRow);
           if (remoteIds) remoteIds.add(row.id);
+
+          // ── Proteção contra reinserção de registros excluídos localmente ──
+          // Se existe um DELETE pendente na sync_queue para este registro,
+          // significa que o usuário excluiu localmente e o PUSH ainda não processou.
+          // Nesse caso, NÃO devemos reinserir o registro vindo do servidor.
+          const pendingDelete = await db.sync_queue
+            .where('table').equals(table)
+            .filter(q => q.action === 'DELETE' && q.data?.id === row.id)
+            .count();
+          if (pendingDelete > 0) {
+            console.log(`[Pull] ⏭️ Ignorando ${row.id} de ${table} — DELETE pendente na fila local`);
+            continue;
+          }
 
           const existing = await store.get(row.id);
           if (!existing) {
