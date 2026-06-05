@@ -290,6 +290,35 @@ export default function PDVPage() {
     setMesaAtual(null);
   }, []);
 
+  // ── Cancelar Venda (liberar mesa sem finalizar) ─────────────────────────
+  const handleCancelarVenda = useCallback(async (numMesa, comanda) => {
+    if (!comanda) return;
+    try {
+      // 1. Marca comanda como cancelada + is_deleted para o sync não baixar de volta
+      const cancelada = {
+        ...comanda,
+        status: 'cancelada',
+        is_deleted: true,
+        cancelada_em: new Date().toISOString(),
+        concluida_em: new Date().toISOString(),
+      };
+      await db.comandas.put(cancelada);
+      await addToSyncQueue('comandas', 'UPDATE', cancelada);
+
+      // 2. Se a mesa cancelada é a que está aberta no momento, volta para mesas
+      if (mesaAtual === numMesa) {
+        setView('mesas');
+        setMesaAtual(null);
+        setBuscaProduto('');
+      }
+
+      toast.success(`Mesa ${String(numMesa).padStart(2, '0')} liberada! Venda cancelada.`);
+    } catch (err) {
+      console.error('[PDV] Erro ao cancelar venda:', err);
+      toast.error('Erro ao cancelar venda. Tente novamente.');
+    }
+  }, [mesaAtual, toast]);
+
   // ── Voltar do checkout para comanda ────────────────────────────────────────
   const handleVoltarCheckout = useCallback(async () => {
     if (comandaAtual) {
@@ -559,7 +588,7 @@ export default function PDVPage() {
     <div className="h-full flex flex-col overflow-hidden">
       {view === 'mesas' && (
         <div className="flex-1 overflow-y-auto">
-          <MesasGrid mesas={MESAS_ARRAY} comandasMap={comandasMap} onOpenMesa={handleOpenMesa} onVendaBalcao={handleVendaBalcao} />
+          <MesasGrid mesas={MESAS_ARRAY} comandasMap={comandasMap} onOpenMesa={handleOpenMesa} onVendaBalcao={handleVendaBalcao} onCancelarVenda={handleCancelarVenda} />
         </div>
       )}
 
