@@ -64,7 +64,7 @@ export default function PDVPage() {
   const clientes = useLiveQuery(() => db?.clientes?.toArray() || [], []) || [];
   const empresa = useLiveQuery(() => db?.empresa?.toArray() || [], []) || [];
   const comandasAbertas = useLiveQuery(() =>
-    db?.comandas?.where('status').anyOf(['aberta', 'faturando']).toArray() || [], []) || [];
+    db?.comandas?.where('status').anyOf(['aberta', 'faturando']).filter(c => !c.is_deleted).toArray() || [], []) || [];
 
   // View state: 'mesas' | 'comanda' | 'checkout'
   const [view, setView] = useState('mesas');
@@ -83,6 +83,7 @@ export default function PDVPage() {
         const todasAbertas = await db.comandas
           .where('status')
           .anyOf(['aberta', 'faturando'])
+          .filter(c => !c.is_deleted)
           .toArray();
 
         // Agrupar por mesa
@@ -157,7 +158,7 @@ export default function PDVPage() {
     const existente = await db.comandas
       .where('mesa')
       .equals(num)
-      .filter(c => c.status === 'aberta' || c.status === 'faturando')
+      .filter(c => (c.status === 'aberta' || c.status === 'faturando') && !c.is_deleted)
       .first();
 
     const activeComanda = existente || comanda;
@@ -195,7 +196,7 @@ export default function PDVPage() {
     const existente = await db.comandas
       .where('mesa')
       .equals(0)
-      .filter(c => c.status === 'aberta' || c.status === 'faturando')
+      .filter(c => (c.status === 'aberta' || c.status === 'faturando') && !c.is_deleted)
       .first();
 
     if (existente) {

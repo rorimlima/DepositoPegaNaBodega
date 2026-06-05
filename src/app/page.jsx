@@ -29,7 +29,7 @@ const KpiCard = memo(function KpiCard({ label, value, icon: Icon, color, sub }) 
 });
 
 export default function Dashboard() {
-  const vendas    = useLiveQuery(() => db?.vendas?.toArray() || [], []);
+  const vendas    = useLiveQuery(() => db?.vendas?.filter(v => !v.is_deleted).toArray() || [], []);
   const clientes  = useLiveQuery(() => db?.clientes?.count() || 0, []);
   const produtos  = useLiveQuery(() => db?.produtos?.count() || 0, []);
 

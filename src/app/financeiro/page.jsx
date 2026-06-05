@@ -22,7 +22,7 @@ const METODO_CONFIG = {
 };
 
 export default function FinanceiroPage() {
-  const vendas   = useLiveQuery(() => db?.vendas?.toArray(), []);
+  const vendas   = useLiveQuery(() => db?.vendas?.filter(v => !v.is_deleted).toArray(), []);
   const clientes = useLiveQuery(() => db?.clientes?.toArray(), []);
 
   const [tab, setTab] = useState('resumo');

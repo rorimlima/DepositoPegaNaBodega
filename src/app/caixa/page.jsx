@@ -80,7 +80,7 @@ export default function CaixaPage() {
   // Queries
   const today = new Date().toISOString().split('T')[0];
   const vendasHoje = useLiveQuery(() => 
-    db?.vendas?.filter(v => v.data_venda.startsWith(today)).toArray() || [], [today]
+    db?.vendas?.filter(v => v.data_venda.startsWith(today) && !v.is_deleted).toArray() || [], [today]
   ) || [];
   
   const fechamentoHoje = useLiveQuery(() => 

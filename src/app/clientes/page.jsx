@@ -231,7 +231,7 @@ const DetalhesModal = memo(function DetalhesModal({ cliente, vendas, onClose }) 
 // ── PÁGINA PRINCIPAL ─────────────────────────────────────────────────────────
 export default function ClientesPage() {
   const clientes = useLiveQuery(() => db?.clientes?.toArray() || [], []) || [];
-  const vendas   = useLiveQuery(() => db?.vendas?.toArray()   || [], []) || [];
+  const vendas   = useLiveQuery(() => db?.vendas?.filter(v => !v.is_deleted).toArray()   || [], []) || [];
 
   const [busca,    setBusca]    = useState('');
   const [formOpen, setFormOpen] = useState(false);

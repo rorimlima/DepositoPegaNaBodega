@@ -354,7 +354,7 @@ const PendenteRow = memo(function PendenteRow({ v, clienteNome, motivos, onView,
 
 // ── PÁGINA PRINCIPAL ─────────────────────────────────────────────────────────
 export default function PendentesPage() {
-  const vendas   = useLiveQuery(() => db?.vendas?.toArray() || [], []) || [];
+  const vendas   = useLiveQuery(() => db?.vendas?.filter(v => !v.is_deleted).toArray() || [], []) || [];
   const clientes = useLiveQuery(() => db?.clientes?.toArray() || [], []) || [];
   const empresa  = useLiveQuery(() => db?.empresa?.toArray()  || [], []) || [];
 

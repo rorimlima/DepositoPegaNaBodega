@@ -147,8 +147,9 @@ export async function pullFromSupabase({ force = false } = {}) {
   for (const { table, dexieStore } of PULL_TABLES) {
     try {
       let query = supabase.from(table).select('*');
-      // Filtrar registros marcados como excluídos em todas as tabelas que possuem is_deleted
-      if (['produtos', 'clientes', 'empresa', 'vendas', 'usuarios', 'comandas', 'fechamentos_caixa', 'movimentacoes_caixa'].includes(table)) {
+      // Filtrar registros marcados como excluídos no servidor
+      const hasIsDeleted = ['produtos', 'clientes', 'empresa', 'vendas', 'usuarios', 'comandas', 'fechamentos_caixa', 'movimentacoes_caixa'].includes(table);
+      if (hasIsDeleted) {
         query = query.eq('is_deleted', false);
       }
 
@@ -174,24 +175,35 @@ export async function pullFromSupabase({ force = false } = {}) {
           if (remoteIds) remoteIds.add(row.id);
 
           // ── Proteção contra reinserção de registros excluídos localmente ──
-          // Se existe um DELETE pendente na sync_queue para este registro,
-          // significa que o usuário excluiu localmente e o PUSH ainda não processou.
-          // Nesse caso, NÃO devemos reinserir o registro vindo do servidor.
-          const pendingDelete = await db.sync_queue
+          // Verifica se existe um DELETE ou UPDATE com is_deleted pendente na sync_queue.
+          // Isso cobre tanto exclusões diretas quanto cancelamentos (status: 'cancelada').
+          const pendingDeleteOrSoftDelete = await db.sync_queue
             .where('table').equals(table)
-            .filter(q => q.action === 'DELETE' && q.data?.id === row.id)
+            .filter(q => {
+              if (q.data?.id !== row.id) return false;
+              if (q.action === 'DELETE') return true;
+              if (q.action === 'UPDATE' && q.data?.is_deleted === true) return true;
+              return false;
+            })
             .count();
-          if (pendingDelete > 0) {
-            console.log(`[Pull] ⏭️ Ignorando ${row.id} de ${table} — DELETE pendente na fila local`);
+          if (pendingDeleteOrSoftDelete > 0) {
+            console.log(`[Pull] ⏭️ Ignorando ${row.id} de ${table} — exclusão pendente na fila local`);
             continue;
           }
 
+          // ── Proteção adicional: se o registro local já está marcado como is_deleted,
+          //    não sobrescrever com dados do servidor (o PUSH ainda vai processar)
           const existing = await store.get(row.id);
+          if (existing?.is_deleted === true) {
+            console.log(`[Pull] ⏭️ Ignorando ${row.id} de ${table} — marcado como is_deleted localmente`);
+            continue;
+          }
+
           if (!existing) {
             await store.put(row);
             totalPulled++;
           } else if (force) {
-            // Force mode: sempre sobrescreve com dados do servidor
+            // Force mode: sobrescreve com dados do servidor
             await store.put(row);
             totalPulled++;
           } else {
@@ -208,9 +220,9 @@ export async function pullFromSupabase({ force = false } = {}) {
         }
       }
 
-      // Em modo force para vendas e comandas: remove registros locais que não existem mais no servidor
-      // (ex: vendas deletadas ou comandas concluídas em outro dispositivo)
-      if (force && remoteIds && ['vendas', 'comandas'].includes(table)) {
+      // Em modo force: remove registros locais que não existem mais no servidor
+      // (registros com is_deleted=true no Supabase não vêm no pull, então seus IDs não estarão em remoteIds)
+      if (force && remoteIds && hasIsDeleted) {
         try {
           const allLocal = await store.toArray();
           for (const local of allLocal) {
